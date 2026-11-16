@@ -17,3 +17,16 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+
+# Gatekeeper Security Configuration
+gatekeeper:
+  security:
+    jwt:
+      secret-key: ${GATEKEEPER_JWT_SECRET:}
+      issuer: ${GATEKEEPER_JWT_ISSUER:gatekeeper-auth}
+      access-token-expiration-seconds: ${GATEKEEPER_JWT_EXPIRATION_SECONDS:900}
+    login:
+      max-attempts: ${GATEKEEPER_LOGIN_MAX_ATTEMPTS:5}
+      lockout-duration-seconds: ${GATEKEEPER_LOGIN_LOCKOUT_SECONDS:900}
+      fail-closed-on-outage: true
+

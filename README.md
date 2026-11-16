@@ -287,3 +287,128 @@ Key scopes follow a hierarchical format:
 
 - **Database as Source of Truth**: Key validation currently executes against PostgreSQL. In Phase 3, an active-key Redis cache with instant invalidation will be integrated to eliminate database latency on high-frequency gateway requests.
 - **Distributed Rate Limiting**: Token bucket rate limiting will be enforced via Redis Lua scripts in Phase 3.
+
+## Administrator Authentication & Spring Security (Phase 2E)
+
+Gatekeeper implements an enterprise-grade administrator authentication and Role-Based Access Control (RBAC) system built on Spring Security and signed JSON Web Tokens (JWT).
+
+### 1. Security Architecture Overview
+
+```
+Client (Admin)
+      |
+      | 1. POST /api/v1/auth/login { username, password }
+      v
++-----------------------------+
+| AuthController              |
++-----------------------------+
+      |
+      v
++-----------------------------+
+| LoginRateLimiter            | ---> Checks IP/Username Abuse (Fail-Closed: 503)
++-----------------------------+
+      |
+      v
++-----------------------------+
+| AdminAuthenticationService  | ---> Verifies User & BCrypt Hash (Generic 401)
++-----------------------------+
+      |
+      v
++-----------------------------+
+| JwtService (HS256)          | ---> Issues 15-Minute Signed Bearer Token
++-----------------------------+
+```
+
+### 2. Administrator Password Security
+
+- **Algorithm**: `BCryptPasswordEncoder` with strength factor `12`.
+- **Entropy & Salting**: Passwords use per-user random salts automatically generated and embedded by BCrypt. Work factor 12 enforces $\approx 250\text{--}350\text{ ms}$ computation time per hash, preventing offline GPU/ASIC cracking.
+- **Password Complexity Rules**:
+  - Minimum 12 characters.
+  - At least one uppercase letter (`[A-Z]`).
+  - At least one lowercase letter (`[a-z]`).
+  - At least one digit (`[0-9]`).
+  - At least one special symbol (`[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]`).
+- **Memory Safety**: Plaintext passwords are accepted as `char[]` arrays during bootstrap and wiped with `\0` immediately after hashing.
+- **Generic Error Responses**: Both non-existent usernames, bad passwords, and deactivated accounts return a uniform HTTP 401 `"Invalid username or password"` to prevent user enumeration attacks.
+
+### 3. Secure Initial Administrator Bootstrap
+
+Gatekeeper strictly forbids default credentials or generating random passwords in startup logs:
+
+- **Controlled Trigger**: Bootstrap is disabled during normal startup. It can **only** run when explicitly invoked via `--gatekeeper.bootstrap.enabled=true`.
+- **One-Time Execution**: If any administrator exists (`adminUserRepository.count() > 0`), the bootstrap process aborts immediately.
+- **Interactive Local Setup**:
+  Run the secure PowerShell bootstrap script:
+  ```powershell
+  .\setup-admin.ps1
+  ```
+  This script securely prompts for `username`, `email`, and `password` (using `Read-Host -AsSecureString`), passes them via transient process-only memory, runs the bootstrap runner, and scrubs all memory variables upon completion.
+- **No Unauthenticated HTTP Bootstrap**: Initial administrator setup is completely isolated from HTTP endpoints.
+
+### 4. JWT Access Token Design
+
+- **Signing Algorithm**: Strict `HMAC-SHA256` (`HS256`) via Nimbus JOSE + JWT.
+- **Secret Key**: Loaded externally from `${GATEKEEPER_JWT_SECRET}`. Must contain $\ge 256$ bits (32 bytes) of cryptographic entropy. Absent or weak keys cause application startup failure.
+- **Token Lifetime**: Fixed 15-minute validity (`access-token-expiration-seconds: 900`).
+- **Minimal Claims Structure**:
+  ```json
+  {
+    "sub": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "username": "superadmin",
+    "role": "ROLE_SUPER_ADMIN",
+    "iss": "gatekeeper-auth",
+    "iat": 1700000000,
+    "exp": 1700000900
+  }
+  ```
+  *(No passwords, hashes, email, or database internals are exposed in the token).*
+- **Immediate Deactivation Enforcement**:
+  On every authenticated request, `JwtAuthenticationFilter` validates the token's cryptographic integrity and verifies that the administrator is still active in the database (`admin.isActive() == true`). Deactivating an administrator in the database invalidates their access **immediately**, preventing stale token reuse.
+
+### 5. Login Abuse & Brute-Force Rate Limiting
+
+- **Protection Scope**: Dedicated `LoginRateLimiter` protecting `POST /api/v1/auth/login` independently from consumer API key rate limits.
+- **Threshold**: 5 consecutive failed attempts per `client_ip:username` within a 15-minute sliding window.
+- **Lockout (HTTP 429)**: Exceeding the threshold triggers a 15-minute lockout returning HTTP 429 `"Too many failed login attempts. Account temporarily locked for security. Please try again later."`
+- **Fail-Closed Guarantee (HTTP 503)**: If the login protection dependency experiences an internal failure or outage, it fails closed by returning HTTP 503 `"Service Unavailable"` rather than leaving the authentication endpoint exposed to unthrottled brute-force attacks.
+
+### 6. Role-Based Access Control (RBAC) Permissions Matrix
+
+| Resource / Action | Public | ROLE_SUPER_ADMIN | ROLE_ADMIN | ROLE_ANALYST |
+|---|---|---|---|---|
+| **Health Check (`GET /api/v1/health`)** | Yes | Yes | Yes | Yes |
+| **Admin Login (`POST /api/v1/auth/login`)** | Yes | Yes | Yes | Yes |
+| **Admin User Provisioning / Roles** | No | Full Access | No Access | No Access |
+| **Subscription Plan Management** | No | Full Access | Full Access | Read-Only |
+| **Consumer Management (Create/Update/Suspend)** | No | Full Access | Full Access | Read-Only |
+| **API Key Management (Create/Revoke)** | No | Full Access | Full Access | Read-Only (Metadata) |
+| **Telemetry & Usage Analytics** | No | Full Access | Full Access | Full Access |
+
+- **Default Fail-Secure**: All endpoints outside `/api/v1/health` and `/api/v1/auth/login` require explicit authentication.
+- **Missing / Invalid Token**: Returns **HTTP 401 Unauthorized**.
+- **Insufficient Role**: Returns **HTTP 403 Forbidden** (`"Access is denied: insufficient role privileges"`).
+
+### 7. Stateless Architecture & CSRF Decision
+
+- **Session Management**: Configured as `SessionCreationPolicy.STATELESS`. Spring Security never creates HTTP sessions (`JSESSIONID`).
+- **CSRF Disabled Rationale**: Cross-Site Request Forgery (CSRF) relies on web browsers automatically appending ambient credentials (such as cookies or HTTP basic auth headers) to cross-origin requests. Gatekeeper authenticates purely via explicit HTTP `Authorization: Bearer <JWT>` headers. Because browsers never automatically attach custom bearer headers cross-origin, standard CSRF exploits are structurally impossible, making disabling CSRF safe and standard.
+
+### 8. Core Conceptual Differences (Backend Interview Knowledge)
+
+#### Authentication vs. Authorization
+- **Authentication (AuthN)**: Answering *"Who are you?"* (verifying identity via username/password against BCrypt hashes and issuing a signed JWT).
+- **Authorization (AuthZ)**: Answering *"What are you allowed to do?"* (verifying permissions, e.g. checking if `ROLE_ADMIN` has privileges to revoke an API key).
+
+#### BCrypt vs. SHA-256
+- **BCrypt**: A slow, salted, adaptive Key Derivation Function (KDF) designed specifically for **low-entropy human passwords**. Its high work factor (configurable rounds) protects against offline GPU/ASIC brute-force dictionary attacks.
+- **SHA-256**: A fast, fixed-time cryptographic digest function designed for **high-entropy machine tokens** (e.g., 256-bit API key secrets). It evaluates in sub-microsecond time to enable tens of thousands of API gateway validations per second without CPU exhaustion.
+
+#### JWT vs. API Keys
+- **JWT (JSON Web Token)**: Short-lived (15 minutes), signed, client-held credential conveying user identity and role claims for interactive administrative sessions.
+- **API Key**: Long-lived, machine-to-machine credential with fixed prefix indexing and constant-time secret validation, scoped to high-frequency automated consumption.
+
+#### HTTP 401 Unauthorized vs. HTTP 403 Forbidden
+- **HTTP 401 (Unauthorized / Unauthenticated)**: The client has not provided valid credentials or the token is missing/expired/malformed. *"Please log in."*
+- **HTTP 403 (Forbidden)**: The client's identity is authenticated and verified, but their role/permissions do not grant access to the requested resource. *"You are authenticated, but you are not allowed here."*
+

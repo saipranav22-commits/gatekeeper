@@ -34,6 +34,13 @@ if (Test-Path $dotenvPath) {
     if (-not $env:REDIS_PORT) { $env:REDIS_PORT = "6380" }
 }
 
+# Ensure secure 256-bit JWT secret is present in environment for development if not provided in .env
+if (-not $env:GATEKEEPER_JWT_SECRET) {
+    $bytes = New-Object byte[] 32
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    $env:GATEKEEPER_JWT_SECRET = -join ($bytes | ForEach-Object { '{0:x2}' -f $_ })
+}
+
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host " Gatekeeper Environment Activated (D:)" -ForegroundColor Green
 Write-Host "==========================================" -ForegroundColor Cyan
@@ -43,4 +50,5 @@ Write-Host "Maven Repo      : D:\Development\maven-repository"
 Write-Host "Temp Directory  : $env:TEMP"
 Write-Host "PostgreSQL Host : 127.0.0.1:5434"
 Write-Host "Redis Host      : 127.0.0.1:6380"
+Write-Host "JWT Secret      : [Configured from environment]"
 Write-Host "==========================================" -ForegroundColor Cyan
