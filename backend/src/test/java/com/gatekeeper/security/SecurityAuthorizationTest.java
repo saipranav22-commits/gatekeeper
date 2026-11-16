@@ -101,10 +101,12 @@ class SecurityAuthorizationTest {
         AdminUser admin = new AdminUser("lead_admin", "lead@gatekeeper.local", "$2a$12$hash", "ROLE_ADMIN");
         admin.setId(adminId);
         admin.setActive(true);
+        admin.setMustChangePassword(false);
+        admin.setTokenVersion(1L);
 
         when(adminUserRepository.findById(adminId)).thenReturn(Optional.of(admin));
 
-        String token = jwtService.generateToken(adminId, "lead_admin", "ROLE_ADMIN");
+        String token = jwtService.generateToken(adminId, "lead_admin", "ROLE_ADMIN", 1L);
 
         mockMvc.perform(get("/api/v1/test/admin")
                 .header("Authorization", "Bearer " + token))
@@ -118,10 +120,12 @@ class SecurityAuthorizationTest {
         AdminUser analyst = new AdminUser("analyst1", "analyst@gatekeeper.local", "$2a$12$hash", "ROLE_ANALYST");
         analyst.setId(adminId);
         analyst.setActive(true);
+        analyst.setMustChangePassword(false);
+        analyst.setTokenVersion(1L);
 
         when(adminUserRepository.findById(adminId)).thenReturn(Optional.of(analyst));
 
-        String token = jwtService.generateToken(adminId, "analyst1", "ROLE_ANALYST");
+        String token = jwtService.generateToken(adminId, "analyst1", "ROLE_ANALYST", 1L);
 
         // Analyst attempting to access super-admin endpoint
         mockMvc.perform(get("/api/v1/test/super-admin")
@@ -149,5 +153,50 @@ class SecurityAuthorizationTest {
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.status", is(401)))
             .andExpect(jsonPath("$.error", is("Unauthorized")));
+    }
+
+    @Test
+    @DisplayName("Token version mismatch (post-password change invalidation) is rejected with 401 Unauthorized")
+    void testTokenVersionMismatchRejectedWith401() throws Exception {
+        UUID adminId = UUID.randomUUID();
+        AdminUser admin = new AdminUser("updated_user", "updated@gatekeeper.local", "$2a$12$hash", "ROLE_ADMIN");
+        admin.setId(adminId);
+        admin.setActive(true);
+        admin.setMustChangePassword(false);
+        admin.setTokenVersion(2L); // Database has version 2
+
+        when(adminUserRepository.findById(adminId)).thenReturn(Optional.of(admin));
+
+        // Token was issued with version 1
+        String oldToken = jwtService.generateToken(adminId, "updated_user", "ROLE_ADMIN", 1L);
+
+        mockMvc.perform(get("/api/v1/test/admin")
+                .header("Authorization", "Bearer " + oldToken))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.status", is(401)))
+            .andExpect(jsonPath("$.error", is("Unauthorized")))
+            .andExpect(jsonPath("$.message", is("Token has been invalidated by a credential change or logout")));
+    }
+
+    @Test
+    @DisplayName("Admin with mustChangePassword=true is blocked from accessing protected resources (403 Forbidden)")
+    void testMustChangePasswordBlocksProtectedResourceWith403() throws Exception {
+        UUID adminId = UUID.randomUUID();
+        AdminUser admin = new AdminUser("newbie", "newbie@gatekeeper.local", "$2a$12$hash", "ROLE_ADMIN");
+        admin.setId(adminId);
+        admin.setActive(true);
+        admin.setMustChangePassword(true); // Must change password
+        admin.setTokenVersion(1L);
+
+        when(adminUserRepository.findById(adminId)).thenReturn(Optional.of(admin));
+
+        String token = jwtService.generateToken(adminId, "newbie", "ROLE_ADMIN", 1L);
+
+        mockMvc.perform(get("/api/v1/test/admin")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.status", is(403)))
+            .andExpect(jsonPath("$.error", is("Forbidden")))
+            .andExpect(jsonPath("$.message", is("Password change is required before accessing protected resources. Please change your password at /api/v1/auth/change-password")));
     }
 }

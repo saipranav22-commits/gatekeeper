@@ -174,7 +174,7 @@ class JwtServiceTest {
     @DisplayName("Verify JWT contains no password or sensitive information")
     void testNoSensitiveClaimsInJwt() throws Exception {
         UUID adminId = UUID.randomUUID();
-        String token = jwtService.generateToken(adminId, "superadmin", "ROLE_SUPER_ADMIN");
+        String token = jwtService.generateToken(adminId, "superadmin", "ROLE_SUPER_ADMIN", 2L);
 
         SignedJWT signedJWT = SignedJWT.parse(token);
         JWTClaimsSet claims = signedJWT.getJWTClaimsSet();
@@ -184,7 +184,29 @@ class JwtServiceTest {
         assertThat(claims.getClaim("password_hash")).isNull();
         assertThat(claims.getClaim("secret")).isNull();
         assertThat(claims.getClaims().keySet()).containsExactlyInAnyOrder(
-            "sub", "username", "role", "iss", "iat", "exp"
+            "sub", "username", "role", "ver", "iss", "iat", "exp"
         );
+    }
+
+    @Test
+    @DisplayName("Verify JWT issued before backend restart remains verifiable afterward")
+    void testJwtPersistenceAcrossRestart() {
+        UUID adminId = UUID.randomUUID();
+        // Instance 1 generates the token
+        String tokenBeforeRestart = jwtService.generateToken(adminId, "restart_user", "ROLE_ADMIN", 1L);
+
+        // Instance 2 simulates application restart with the same persistent external key
+        JwtProperties restartedProperties = new JwtProperties();
+        restartedProperties.setSecretKey(TEST_SECRET);
+        restartedProperties.setIssuer("gatekeeper-auth");
+        restartedProperties.setAccessTokenExpirationSeconds(900);
+        JwtService restartedJwtService = new JwtService(restartedProperties);
+
+        // Verify token issued prior to restart remains 100% valid and parseable
+        AdminJwtClaims parsedClaims = restartedJwtService.parseAndValidateToken(tokenBeforeRestart);
+        assertThat(parsedClaims.adminId()).isEqualTo(adminId);
+        assertThat(parsedClaims.username()).isEqualTo("restart_user");
+        assertThat(parsedClaims.role()).isEqualTo("ROLE_ADMIN");
+        assertThat(parsedClaims.tokenVersion()).isEqualTo(1L);
     }
 }

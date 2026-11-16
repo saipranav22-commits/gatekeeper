@@ -9,4 +9,6 @@ public interface LoginRateLimiter {
     void recordSuccess(String key);
 
     void reset(String key);
+
+    long getRemainingLockoutSeconds(String key);
 }

@@ -68,7 +68,7 @@ class AdminAuthenticationServiceTest {
         when(loginRateLimiter.isBlocked("192.168.1.100:superadmin")).thenReturn(false);
         when(adminUserRepository.findByUsername("superadmin")).thenReturn(Optional.of(admin));
         when(passwordEncoder.matches("ComplexPass123!", "$2a$12$hash")).thenReturn(true);
-        when(jwtService.generateToken(adminId, "superadmin", "ROLE_SUPER_ADMIN")).thenReturn("mock.jwt.token");
+        when(jwtService.generateToken(adminId, "superadmin", "ROLE_SUPER_ADMIN", 1L)).thenReturn("mock.jwt.token");
 
         LoginRequest request = new LoginRequest("superadmin", "ComplexPass123!");
         LoginResponse response = authenticationService.authenticate(request, "192.168.1.100");
@@ -150,5 +150,91 @@ class AdminAuthenticationServiceTest {
             .hasMessageContaining("temporarily locked");
 
         verify(adminUserRepository, never()).findByUsername(anyString());
+    }
+
+    @Test
+    @DisplayName("Successfully change password: verifies old password, clears mustChangePassword, increments tokenVersion")
+    void testChangePasswordSuccess() {
+        UUID adminId = UUID.randomUUID();
+        AdminUser admin = new AdminUser("admin", "admin@gatekeeper.local", "$2a$12$oldhash", "ROLE_ADMIN");
+        admin.setId(adminId);
+        admin.setActive(true);
+        admin.setMustChangePassword(true);
+        admin.setTokenVersion(1L);
+
+        when(adminUserRepository.findById(adminId)).thenReturn(Optional.of(admin));
+        when(passwordEncoder.matches("OldPassword123!", "$2a$12$oldhash")).thenReturn(true);
+        when(passwordEncoder.encode("NewComplexPassword456!")).thenReturn("$2a$12$newhash");
+        when(jwtService.generateToken(adminId, "admin", "ROLE_ADMIN", 2L)).thenReturn("new.version.jwt");
+
+        com.gatekeeper.security.dto.ChangePasswordRequest request =
+            new com.gatekeeper.security.dto.ChangePasswordRequest("OldPassword123!", "NewComplexPassword456!");
+
+        LoginResponse response = authenticationService.changePassword(adminId, request);
+
+        assertThat(response.accessToken()).isEqualTo("new.version.jwt");
+        assertThat(admin.isMustChangePassword()).isFalse();
+        assertThat(admin.getTokenVersion()).isEqualTo(2L);
+        assertThat(admin.getPasswordHash()).isEqualTo("$2a$12$newhash");
+        assertThat(admin.getPasswordChangedAt()).isNotNull();
+
+        verify(adminUserRepository).saveAndFlush(admin);
+    }
+
+    @Test
+    @DisplayName("Reject password change when current password is incorrect")
+    void testChangePasswordIncorrectOldPassword() {
+        UUID adminId = UUID.randomUUID();
+        AdminUser admin = new AdminUser("admin", "admin@gatekeeper.local", "$2a$12$oldhash", "ROLE_ADMIN");
+        admin.setId(adminId);
+        admin.setActive(true);
+
+        when(adminUserRepository.findById(adminId)).thenReturn(Optional.of(admin));
+        when(passwordEncoder.matches("WrongOldPassword123!", "$2a$12$oldhash")).thenReturn(false);
+
+        com.gatekeeper.security.dto.ChangePasswordRequest request =
+            new com.gatekeeper.security.dto.ChangePasswordRequest("WrongOldPassword123!", "NewComplexPassword456!");
+
+        assertThatThrownBy(() -> authenticationService.changePassword(adminId, request))
+            .isInstanceOf(AdminAuthenticationException.class)
+            .hasMessage("Current password is incorrect");
+    }
+
+    @Test
+    @DisplayName("Reject password change when new password is identical to current password")
+    void testChangePasswordIdenticalPassword() {
+        UUID adminId = UUID.randomUUID();
+        AdminUser admin = new AdminUser("admin", "admin@gatekeeper.local", "$2a$12$oldhash", "ROLE_ADMIN");
+        admin.setId(adminId);
+        admin.setActive(true);
+
+        when(adminUserRepository.findById(adminId)).thenReturn(Optional.of(admin));
+        when(passwordEncoder.matches("SamePassword123!", "$2a$12$oldhash")).thenReturn(true);
+
+        com.gatekeeper.security.dto.ChangePasswordRequest request =
+            new com.gatekeeper.security.dto.ChangePasswordRequest("SamePassword123!", "SamePassword123!");
+
+        assertThatThrownBy(() -> authenticationService.changePassword(adminId, request))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("identical");
+    }
+
+    @Test
+    @DisplayName("Reject password change when new password fails complexity requirements")
+    void testChangePasswordWeakNewPassword() {
+        UUID adminId = UUID.randomUUID();
+        AdminUser admin = new AdminUser("admin", "admin@gatekeeper.local", "$2a$12$oldhash", "ROLE_ADMIN");
+        admin.setId(adminId);
+        admin.setActive(true);
+
+        when(adminUserRepository.findById(adminId)).thenReturn(Optional.of(admin));
+        when(passwordEncoder.matches("OldPassword123!", "$2a$12$oldhash")).thenReturn(true);
+
+        com.gatekeeper.security.dto.ChangePasswordRequest request =
+            new com.gatekeeper.security.dto.ChangePasswordRequest("OldPassword123!", "weak");
+
+        assertThatThrownBy(() -> authenticationService.changePassword(adminId, request))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("at least 12 characters");
     }
 }

@@ -10,6 +10,7 @@ public class LoginProtectionProperties {
     private int maxAttempts = 5;
     private long lockoutDurationSeconds = 900; // 15 minutes
     private boolean failClosedOnOutage = true;
+    private boolean trustProxyHeaders = false;
 
     public int getMaxAttempts() {
         return maxAttempts;
@@ -33,5 +34,13 @@ public class LoginProtectionProperties {
 
     public void setFailClosedOnOutage(boolean failClosedOnOutage) {
         this.failClosedOnOutage = failClosedOnOutage;
+    }
+
+    public boolean isTrustProxyHeaders() {
+        return trustProxyHeaders;
+    }
+
+    public void setTrustProxyHeaders(boolean trustProxyHeaders) {
+        this.trustProxyHeaders = trustProxyHeaders;
     }
 }

@@ -53,5 +53,5 @@ logging:
 gatekeeper:
   security:
     jwt:
-      secret-key: ${GATEKEEPER_JWT_SECRET:d1f8a2c5e7b49038271635485960718293a4b5c6d7e8f901a2b3c4d5e6f7a8b9}
+      secret-key: ${GATEKEEPER_JWT_SECRET:}
 

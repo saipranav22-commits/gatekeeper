@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @Profile("!foundation")
@@ -52,9 +53,12 @@ public class AdminAuthenticationService {
 
         // Login abuse prevention check
         if (loginRateLimiter.isBlocked(rateLimitKey)) {
-            log.warn("Blocked login attempt for user '{}' from IP '{}' due to rate limiting", username, clientIp);
+            long retryAfter = loginRateLimiter.getRemainingLockoutSeconds(rateLimitKey);
+            log.warn("Blocked login attempt for user '{}' from IP '{}' due to rate limiting (retry-after: {}s)",
+                username, clientIp, retryAfter);
             throw new LoginRateLimitExceededException(
-                "Too many failed login attempts. Account temporarily locked for security. Please try again later."
+                "Too many failed login attempts. Account temporarily locked for security. Please try again later.",
+                retryAfter
             );
         }
 
@@ -86,7 +90,7 @@ public class AdminAuthenticationService {
         // Authentication succeeded: clear rate limiter tracking
         loginRateLimiter.recordSuccess(rateLimitKey);
 
-        String token = jwtService.generateToken(admin.getId(), admin.getUsername(), admin.getRole());
+        String token = jwtService.generateToken(admin.getId(), admin.getUsername(), admin.getRole(), admin.getTokenVersion());
         Instant expiresAt = Instant.now().plusSeconds(jwtProperties.getAccessTokenExpirationSeconds());
 
         AdminProfileDto profileDto = new AdminProfileDto(
@@ -99,5 +103,55 @@ public class AdminAuthenticationService {
 
         log.info("Successful login for administrator '{}' with role '{}'", admin.getUsername(), admin.getRole());
         return new LoginResponse(token, "Bearer", jwtProperties.getAccessTokenExpirationSeconds(), expiresAt, profileDto);
+    }
+
+    @Transactional
+    public LoginResponse changePassword(UUID adminId, com.gatekeeper.security.dto.ChangePasswordRequest request) {
+        Objects.requireNonNull(adminId, "adminId must not be null");
+        Objects.requireNonNull(request, "request must not be null");
+
+        AdminUser admin = adminUserRepository.findById(adminId)
+            .orElseThrow(() -> new AdminAuthenticationException("Administrator not found"));
+
+        if (!admin.isActive()) {
+            throw new AdminAuthenticationException("Administrator account is inactive or revoked");
+        }
+
+        // Verify old password
+        if (!passwordEncoder.matches(request.oldPassword(), admin.getPasswordHash())) {
+            throw new AdminAuthenticationException("Current password is incorrect");
+        }
+
+        // Prevent identical password replacement
+        if (request.oldPassword().equals(request.newPassword())) {
+            throw new IllegalArgumentException("New password cannot be identical to current password");
+        }
+
+        // Validate password complexity
+        AdminBootstrapService.validatePasswordComplexity(request.newPassword().toCharArray());
+
+        // Update password hash, clear mustChangePassword flag, and increment tokenVersion
+        admin.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        admin.setMustChangePassword(false);
+        admin.setTokenVersion(admin.getTokenVersion() + 1);
+        admin.setPasswordChangedAt(Instant.now());
+
+        adminUserRepository.saveAndFlush(admin);
+        log.info("Password changed successfully; token version incremented to {} for admin '{}'",
+            admin.getTokenVersion(), admin.getUsername());
+
+        // Issue fresh token with new tokenVersion
+        String newToken = jwtService.generateToken(admin.getId(), admin.getUsername(), admin.getRole(), admin.getTokenVersion());
+        Instant expiresAt = Instant.now().plusSeconds(jwtProperties.getAccessTokenExpirationSeconds());
+
+        AdminProfileDto profileDto = new AdminProfileDto(
+            admin.getId(),
+            admin.getUsername(),
+            admin.getEmail(),
+            admin.getRole(),
+            admin.isMustChangePassword()
+        );
+
+        return new LoginResponse(newToken, "Bearer", jwtProperties.getAccessTokenExpirationSeconds(), expiresAt, profileDto);
     }
 }

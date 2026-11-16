@@ -30,10 +30,14 @@ public class GatekeeperAccessDeniedHandler implements AccessDeniedHandler {
         response.setStatus(HttpStatus.FORBIDDEN.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
 
+        String message = accessDeniedException != null && accessDeniedException.getMessage() != null
+            ? accessDeniedException.getMessage()
+            : "Access is denied: insufficient role privileges";
+
         ErrorResponse errorResponse = ErrorResponse.of(
             HttpStatus.FORBIDDEN.value(),
             HttpStatus.FORBIDDEN.getReasonPhrase(),
-            "Access is denied: insufficient role privileges",
+            message,
             request.getRequestURI()
         );
 

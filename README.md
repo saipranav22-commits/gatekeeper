@@ -146,6 +146,9 @@ Database migrations reside in `backend/src/main/resources/db/migration/`:
    - Creates `usage_events` table for audit and telemetry logging.
    - `consumer_id` and `api_key_id` are nullable to allow logging unauthenticated or invalid-key requests.
    - Includes historical snapshot columns (`consumer_email_snapshot`, `key_prefix_snapshot`) and composite performance indexes.
+4. **`V4__add_admin_token_version.sql`**:
+   - Adds `token_version` (BIGINT DEFAULT 1) and `password_changed_at` (TIMESTAMPTZ) to `admin_users`.
+   - Enables instantaneous cryptographic invalidation of previously issued JWTs upon password change or credential rotation.
 
 ### Verifying Migrations
 
@@ -346,10 +349,11 @@ Gatekeeper strictly forbids default credentials or generating random passwords i
   This script securely prompts for `username`, `email`, and `password` (using `Read-Host -AsSecureString`), passes them via transient process-only memory, runs the bootstrap runner, and scrubs all memory variables upon completion.
 - **No Unauthenticated HTTP Bootstrap**: Initial administrator setup is completely isolated from HTTP endpoints.
 
-### 4. JWT Access Token Design
+### 4. JWT Access Token Design & Signing Key Persistence
 
 - **Signing Algorithm**: Strict `HMAC-SHA256` (`HS256`) via Nimbus JOSE + JWT.
-- **Secret Key**: Loaded externally from `${GATEKEEPER_JWT_SECRET}`. Must contain $\ge 256$ bits (32 bytes) of cryptographic entropy. Absent or weak keys cause application startup failure.
+- **Key Persistence**: Local development generates a persistent, cryptographically secure 256-bit signing key saved in `D:\Development\Gatekeeper\.jwt.key` (Git-ignored). Existing keys are preserved across backend restarts, preventing silent token invalidation.
+- **Production Key Governance**: Production environments load the secret strictly from `${GATEKEEPER_JWT_SECRET}`. Hardcoded fallback secrets are completely disallowed; keys with $< 256$ bits of entropy fail startup immediately.
 - **Token Lifetime**: Fixed 15-minute validity (`access-token-expiration-seconds: 900`).
 - **Minimal Claims Structure**:
   ```json
@@ -357,23 +361,39 @@ Gatekeeper strictly forbids default credentials or generating random passwords i
     "sub": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
     "username": "superadmin",
     "role": "ROLE_SUPER_ADMIN",
+    "ver": 1,
     "iss": "gatekeeper-auth",
     "iat": 1700000000,
     "exp": 1700000900
   }
   ```
-  *(No passwords, hashes, email, or database internals are exposed in the token).*
-- **Immediate Deactivation Enforcement**:
-  On every authenticated request, `JwtAuthenticationFilter` validates the token's cryptographic integrity and verifies that the administrator is still active in the database (`admin.isActive() == true`). Deactivating an administrator in the database invalidates their access **immediately**, preventing stale token reuse.
+- **Cryptographic Token Invalidation (Token Version)**:
+  Every issued JWT includes a `ver` (token version) claim corresponding to `admin_users.token_version`. Changing an administrator's password increments `token_version` in PostgreSQL, instantly invalidating all previously issued access tokens on subsequent requests.
+- **Real-Time Account Status Check**:
+  `JwtAuthenticationFilter` validates on every request that the administrator account remains active in PostgreSQL (`admin.isActive() == true`). Deactivating an account revokes access immediately.
 
-### 5. Login Abuse & Brute-Force Rate Limiting
+### 5. Password-Change Enforcement Workflow
 
-- **Protection Scope**: Dedicated `LoginRateLimiter` protecting `POST /api/v1/auth/login` independently from consumer API key rate limits.
-- **Threshold**: 5 consecutive failed attempts per `client_ip:username` within a 15-minute sliding window.
-- **Lockout (HTTP 429)**: Exceeding the threshold triggers a 15-minute lockout returning HTTP 429 `"Too many failed login attempts. Account temporarily locked for security. Please try again later."`
-- **Fail-Closed Guarantee (HTTP 503)**: If the login protection dependency experiences an internal failure or outage, it fails closed by returning HTTP 503 `"Service Unavailable"` rather than leaving the authentication endpoint exposed to unthrottled brute-force attacks.
+Administrators flagged with `must_change_password = true` have restricted access:
+- **Restricted Access**: Any attempt to access standard administrative resources returns **HTTP 403 Forbidden** (`"Password change is required before accessing protected resources. Please change your password at /api/v1/auth/change-password"`).
+- **Change Password Endpoint**: `POST /api/v1/auth/change-password` (Authenticated via Bearer token).
+  - Verifies current password against stored BCrypt hash.
+  - Enforces strong password complexity (min 12 chars, upper, lower, digit, special symbol).
+  - Rejects new password identical to current password.
+  - Clears `must_change_password = false`, increments `token_version`, updates `password_changed_at`.
+  - Returns HTTP 200 with a new valid JWT bearing the updated `ver` claim.
 
-### 6. Role-Based Access Control (RBAC) Permissions Matrix
+### 6. Login Abuse & Brute-Force Rate Limiting
+
+- **Distributed Enforcement**: Backed by atomic Redis counters (`gatekeeper:auth:abuse:<key>`) with explicit TTL, providing multi-instance consistency across backend replicas. Falls back to in-memory tracking in offline testing environments.
+- **Anti-Spoofing & Normalization**:
+  - Usernames are normalized to lowercase (`username.toLowerCase().trim()`) to prevent casing evasion attacks.
+  - Client IP defaults to `request.getRemoteAddr()`. Forwarded proxy headers (`X-Forwarded-For`) are untrusted unless explicitly enabled via `gatekeeper.security.login.trust-proxy-headers=true`.
+- **Threshold**: 5 failed attempts per `client_ip:username` within a 15-minute lockout window.
+- **Lockout (HTTP 429)**: Exceeding the threshold triggers HTTP 429 with standard `Retry-After: <seconds>` response header.
+- **Fail-Closed Guarantee (HTTP 503)**: If Redis or login protection experiences an infrastructure failure, it fails closed returning HTTP 503 `"Service Unavailable"` to safeguard credentials.
+
+### 7. Role-Based Access Control (RBAC) Permissions Matrix
 
 | Resource / Action | Public | ROLE_SUPER_ADMIN | ROLE_ADMIN | ROLE_ANALYST |
 |---|---|---|---|---|

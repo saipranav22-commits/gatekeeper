@@ -192,6 +192,8 @@ class DatabaseIntegrationTest {
 
         assertThat(saved.getId()).isNotNull();
         assertThat(saved.isMustChangePassword()).isTrue();
+        assertThat(saved.getTokenVersion()).isEqualTo(1L);
+        assertThat(saved.getPasswordChangedAt()).isNotNull();
 
         Optional<AdminUser> byUsername = adminUserRepository.findByUsername("superadmin");
         assertThat(byUsername).isPresent();

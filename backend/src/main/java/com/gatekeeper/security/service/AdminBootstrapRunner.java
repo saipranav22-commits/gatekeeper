@@ -51,7 +51,7 @@ public class AdminBootstrapRunner implements ApplicationRunner {
             email = console.readLine("Enter initial administrator email: ");
             password = console.readPassword("Enter initial administrator password (min 12 chars, upper/lower/digit/special): ");
         } else {
-            // Non-interactive fallback: read from secure environment variables
+            // Check if stdin has available input before falling back to environment
             String envUser = System.getenv("BOOTSTRAP_ADMIN_USERNAME");
             String envEmail = System.getenv("BOOTSTRAP_ADMIN_EMAIL");
             String envPass = System.getenv("BOOTSTRAP_ADMIN_PASSWORD");
@@ -61,8 +61,19 @@ public class AdminBootstrapRunner implements ApplicationRunner {
                 email = envEmail;
                 password = envPass.toCharArray();
             } else {
-                System.out.println("No interactive console or BOOTSTRAP_ADMIN_* environment variables detected.");
-                return;
+                try {
+                    Scanner scanner = new Scanner(System.in);
+                    System.out.println("\n=== Gatekeeper Initial Administrator Bootstrap (Standard Input) ===");
+                    System.out.print("Enter initial administrator username: ");
+                    username = scanner.hasNextLine() ? scanner.nextLine() : null;
+                    System.out.print("Enter initial administrator email: ");
+                    email = scanner.hasNextLine() ? scanner.nextLine() : null;
+                    System.out.print("Enter initial administrator password: ");
+                    password = scanner.hasNextLine() ? scanner.nextLine().toCharArray() : null;
+                } catch (Exception e) {
+                    System.out.println("No interactive console, standard input, or BOOTSTRAP_ADMIN_* environment variables detected.");
+                    return;
+                }
             }
         }
 

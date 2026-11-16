@@ -71,4 +71,17 @@ class DefaultLoginRateLimiterTest {
         assertThatThrownBy(() -> rateLimiter.recordFailure("127.0.0.1:admin"))
             .isInstanceOf(LoginProtectionUnavailableException.class);
     }
+
+    @Test
+    @DisplayName("Verify getRemainingLockoutSeconds returns valid remaining lockout duration")
+    void testRemainingLockoutDuration() {
+        String key = "127.0.0.1:lockout_test";
+
+        rateLimiter.recordFailure(key);
+        rateLimiter.recordFailure(key);
+        rateLimiter.recordFailure(key); // locked out
+
+        long remaining = rateLimiter.getRemainingLockoutSeconds(key);
+        assertThat(remaining).isGreaterThan(0L).isLessThanOrEqualTo(60L);
+    }
 }

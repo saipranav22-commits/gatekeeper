@@ -29,6 +29,7 @@ public class JwtService {
     private static final Logger log = LoggerFactory.getLogger(JwtService.class);
     private static final String CLAIM_USERNAME = "username";
     private static final String CLAIM_ROLE = "role";
+    private static final String CLAIM_TOKEN_VERSION = "ver";
 
     private final JwtProperties jwtProperties;
     private final byte[] secretKeyBytes;
@@ -42,6 +43,10 @@ public class JwtService {
     }
 
     public String generateToken(UUID adminId, String username, String role) {
+        return generateToken(adminId, username, role, 1L);
+    }
+
+    public String generateToken(UUID adminId, String username, String role, long tokenVersion) {
         Objects.requireNonNull(adminId, "adminId must not be null");
         Objects.requireNonNull(username, "username must not be null");
         Objects.requireNonNull(role, "role must not be null");
@@ -53,6 +58,7 @@ public class JwtService {
             .subject(adminId.toString())
             .claim(CLAIM_USERNAME, username)
             .claim(CLAIM_ROLE, role)
+            .claim(CLAIM_TOKEN_VERSION, tokenVersion)
             .issuer(jwtProperties.getIssuer())
             .issueTime(Date.from(now))
             .expirationTime(Date.from(expiresAt))
@@ -136,6 +142,8 @@ public class JwtService {
 
         String username = (String) claimsSet.getClaim(CLAIM_USERNAME);
         String role = (String) claimsSet.getClaim(CLAIM_ROLE);
+        Long tokenVersionClaim = (Long) claimsSet.getClaim(CLAIM_TOKEN_VERSION);
+        long tokenVersion = tokenVersionClaim != null ? tokenVersionClaim : 1L;
 
         if (username == null || username.isBlank() || role == null || role.isBlank()) {
             throw new AdminAuthenticationException("Token missing required identity claims");
@@ -144,6 +152,6 @@ public class JwtService {
         Instant issuedAt = claimsSet.getIssueTime() != null ? claimsSet.getIssueTime().toInstant() : Instant.now();
         Instant expiresAt = expirationTime.toInstant();
 
-        return new AdminJwtClaims(adminId, username, role, issuedAt, expiresAt);
+        return new AdminJwtClaims(adminId, username, role, tokenVersion, issuedAt, expiresAt);
     }
 }

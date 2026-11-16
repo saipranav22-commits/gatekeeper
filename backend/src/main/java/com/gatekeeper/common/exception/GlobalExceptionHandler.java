@@ -4,6 +4,7 @@ import com.gatekeeper.common.response.ErrorResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -22,6 +23,22 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    @ExceptionHandler(LoginRateLimitExceededException.class)
+    public ResponseEntity<ErrorResponse> handleLoginRateLimitExceeded(LoginRateLimitExceededException ex, HttpServletRequest request) {
+        log.warn("Login abuse rate limit exceeded on {}: {}", request.getRequestURI(), ex.getMessage());
+        HttpHeaders headers = new HttpHeaders();
+        if (ex.getRetryAfterSeconds() > 0) {
+            headers.set(HttpHeaders.RETRY_AFTER, String.valueOf(ex.getRetryAfterSeconds()));
+        }
+        ErrorResponse errorResponse = ErrorResponse.of(
+            HttpStatus.TOO_MANY_REQUESTS.value(),
+            HttpStatus.TOO_MANY_REQUESTS.getReasonPhrase(),
+            ex.getMessage(),
+            request.getRequestURI()
+        );
+        return new ResponseEntity<>(errorResponse, headers, HttpStatus.TOO_MANY_REQUESTS);
+    }
 
     @ExceptionHandler(GatekeeperException.class)
     public ResponseEntity<ErrorResponse> handleGatekeeperException(GatekeeperException ex, HttpServletRequest request) {

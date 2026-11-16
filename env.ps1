@@ -34,11 +34,21 @@ if (Test-Path $dotenvPath) {
     if (-not $env:REDIS_PORT) { $env:REDIS_PORT = "6380" }
 }
 
-# Ensure secure 256-bit JWT secret is present in environment for development if not provided in .env
+# Ensure stable 256-bit JWT secret is persisted across restarts on D: for local development
+$jwtKeyFile = "D:\Development\Gatekeeper\.jwt.key"
+if (Test-Path $jwtKeyFile) {
+    $existingKey = (Get-Content $jwtKeyFile -Raw).Trim()
+    if ($existingKey.Length -ge 64) {
+        $env:GATEKEEPER_JWT_SECRET = $existingKey
+    }
+}
+
 if (-not $env:GATEKEEPER_JWT_SECRET) {
     $bytes = New-Object byte[] 32
     [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-    $env:GATEKEEPER_JWT_SECRET = -join ($bytes | ForEach-Object { '{0:x2}' -f $_ })
+    $generatedSecret = -join ($bytes | ForEach-Object { '{0:x2}' -f $_ })
+    Set-Content -Path $jwtKeyFile -Value $generatedSecret -NoNewline
+    $env:GATEKEEPER_JWT_SECRET = $generatedSecret
 }
 
 Write-Host "==========================================" -ForegroundColor Cyan

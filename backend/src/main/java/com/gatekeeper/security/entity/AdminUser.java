@@ -40,6 +40,12 @@ public class AdminUser {
     @Column(name = "must_change_password", nullable = false)
     private boolean mustChangePassword = true;
 
+    @Column(name = "token_version", nullable = false)
+    private long tokenVersion = 1L;
+
+    @Column(name = "password_changed_at", nullable = false)
+    private Instant passwordChangedAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -66,6 +72,9 @@ public class AdminUser {
         }
         if (this.updatedAt == null) {
             this.updatedAt = now;
+        }
+        if (this.passwordChangedAt == null) {
+            this.passwordChangedAt = now;
         }
     }
 
@@ -128,6 +137,22 @@ public class AdminUser {
 
     public void setMustChangePassword(boolean mustChangePassword) {
         this.mustChangePassword = mustChangePassword;
+    }
+
+    public long getTokenVersion() {
+        return tokenVersion;
+    }
+
+    public void setTokenVersion(long tokenVersion) {
+        this.tokenVersion = tokenVersion;
+    }
+
+    public Instant getPasswordChangedAt() {
+        return passwordChangedAt;
+    }
+
+    public void setPasswordChangedAt(Instant passwordChangedAt) {
+        this.passwordChangedAt = passwordChangedAt;
     }
 
     public Instant getCreatedAt() {
