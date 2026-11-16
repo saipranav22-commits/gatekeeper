@@ -432,3 +432,48 @@ Administrators flagged with `must_change_password = true` have restricted access
 - **HTTP 401 (Unauthorized / Unauthenticated)**: The client has not provided valid credentials or the token is missing/expired/malformed. *"Please log in."*
 - **HTTP 403 (Forbidden)**: The client's identity is authenticated and verified, but their role/permissions do not grant access to the requested resource. *"You are authenticated, but you are not allowed here."*
 
+## Management REST APIs (Phase 2F)
+
+Gatekeeper provides secure REST management APIs for subscription plans, API consumers, and API keys. All endpoints require HTTP Bearer JWT authentication.
+
+### OpenAPI & Interactive Documentation
+
+- **Swagger UI**: `http://localhost:8080/swagger-ui.html`
+- **OpenAPI 3.0 Specification**: `http://localhost:8080/v3/api-docs`
+
+### Endpoint Catalog
+
+| Method | Endpoint | Allowed Roles | Description | Status Code |
+|---|---|---|---|---|
+| `GET` | `/api/v1/plans` | SUPER_ADMIN, ADMIN, ANALYST | List all active subscription plans | `200 OK` |
+| `GET` | `/api/v1/plans/{planId}` | SUPER_ADMIN, ADMIN, ANALYST | Get subscription plan by ID | `200 OK` / `404` |
+| `POST` | `/api/v1/consumers` | SUPER_ADMIN, ADMIN | Create a new API consumer | `201 Created` (`Location`) |
+| `GET` | `/api/v1/consumers` | SUPER_ADMIN, ADMIN, ANALYST | List consumers with bounded pagination | `200 OK` |
+| `GET` | `/api/v1/consumers/{consumerId}` | SUPER_ADMIN, ADMIN, ANALYST | Get consumer details by ID | `200 OK` / `404` |
+| `PATCH` | `/api/v1/consumers/{consumerId}/plan` | SUPER_ADMIN, ADMIN | Update consumer subscription plan | `200 OK` / `404` |
+| `PATCH` | `/api/v1/consumers/{consumerId}/suspend` | SUPER_ADMIN, ADMIN | Suspend consumer access | `200 OK` / `404` |
+| `PATCH` | `/api/v1/consumers/{consumerId}/reactivate` | SUPER_ADMIN, ADMIN | Reactivate suspended consumer | `200 OK` / `404` |
+| `DELETE` | `/api/v1/consumers/{consumerId}` | SUPER_ADMIN, ADMIN | Soft-delete consumer (audit preserved) | `204 No Content` |
+| `POST` | `/api/v1/consumers/{consumerId}/keys` | SUPER_ADMIN, ADMIN | Generate API key (one-time plaintext) | `201 Created` (`Cache-Control: no-store`) |
+| `GET` | `/api/v1/consumers/{consumerId}/keys` | SUPER_ADMIN, ADMIN, ANALYST | List sanitized key metadata for consumer | `200 OK` |
+| `GET` | `/api/v1/consumers/{consumerId}/keys/{keyId}` | SUPER_ADMIN, ADMIN, ANALYST | Get sanitized key metadata by ID | `200 OK` / `404` |
+| `POST` | `/api/v1/consumers/{consumerId}/keys/{keyId}/revoke` | SUPER_ADMIN, ADMIN | Revoke key with reason (idempotent) | `200 OK` / `404` |
+
+### Security Guarantees
+
+1. **One-Time Plaintext Credential Exposure**: The plaintext API key is delivered **only once** in the HTTP 201 response body of `POST /api/v1/consumers/{consumerId}/keys`. It is never stored in plaintext and is never returned in listing or detail APIs.
+2. **Cache Prevention**: Key generation responses enforce `Cache-Control: no-store` to prevent caching of plaintext credentials in intermediate proxies or browser caches.
+3. **Cross-Consumer Isolation**: Any key lookup or revocation request where `{keyId}` does not belong to `{consumerId}` is rejected with `HTTP 404 Not Found`.
+4. **Transaction Guarantee**: The database transaction is committed before the plaintext API key is returned to the HTTP client.
+5. **Bounded Pagination**: Consumer pagination is bounded (max page size: 100, default: 20) with deterministic multi-column ordering (`createdAt DESC, id ASC`).
+
+### Live Verification Script
+
+Run the automated live verification script to test all 10 management steps against the running server:
+
+```powershell
+Set-Location D:\Development\Gatekeeper
+.\verify-management-apis.ps1
+```
+
+

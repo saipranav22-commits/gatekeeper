@@ -30,3 +30,13 @@ gatekeeper:
       lockout-duration-seconds: ${GATEKEEPER_LOGIN_LOCKOUT_SECONDS:900}
       fail-closed-on-outage: true
 
+# OpenAPI 3 Documentation
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+
+
