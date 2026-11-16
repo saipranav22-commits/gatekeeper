@@ -119,6 +119,44 @@ class DatabaseIntegrationTest {
     }
 
     @Test
+    @DisplayName("Verify ApiKey digest-only persistence, expiration, and revocation lifecycle")
+    void testApiKeyDigestOnlyAndLifecycle() {
+        SubscriptionPlan plan = planRepository.findByName("FREE").orElseThrow();
+        ApiConsumer consumer = consumerRepository.saveAndFlush(new ApiConsumer("Epsilon Corp", "eps@corp.com", plan));
+
+        Instant futureExpiry = Instant.now().plus(90, ChronoUnit.DAYS);
+        String digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+        ApiKey key = new ApiKey(consumer, "Expiring Key", "gk_live_9988776655443322", digest);
+        key.setExpiresAt(futureExpiry);
+        key.revoke("Scheduled rotation");
+
+        ApiKey saved = apiKeyRepository.saveAndFlush(key);
+
+        assertThat(saved.getSecretDigest()).isEqualTo(digest);
+        assertThat(saved.getSecretDigest()).hasSize(64);
+        assertThat(saved.getExpiresAt()).isNotNull();
+        assertThat(saved.getStatus()).isEqualTo(ApiKeyStatus.REVOKED);
+        assertThat(saved.getRevocationReason()).isEqualTo("Scheduled rotation");
+        assertThat(saved.getRevokedAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("Verify optimistic locking on ApiKey updates")
+    void testOptimisticLockingOnApiKey() {
+        SubscriptionPlan plan = planRepository.findByName("FREE").orElseThrow();
+        ApiConsumer consumer = consumerRepository.saveAndFlush(new ApiConsumer("Zeta Corp", "zeta@corp.com", plan));
+
+        ApiKey key = new ApiKey(consumer, "Version Key", "gk_live_0011223344556677", "a".repeat(64));
+        ApiKey saved = apiKeyRepository.saveAndFlush(key);
+        assertThat(saved.getVersion()).isEqualTo(0L);
+
+        saved.setName("Updated Version Key");
+        ApiKey updated = apiKeyRepository.saveAndFlush(saved);
+        assertThat(updated.getVersion()).isEqualTo(1L);
+    }
+
+    @Test
     @DisplayName("Verify UsageEvent with both nullable and associated foreign keys")
     void testUsageEventNullableAssociations() {
         SubscriptionPlan plan = planRepository.findByName("FREE").orElseThrow();
