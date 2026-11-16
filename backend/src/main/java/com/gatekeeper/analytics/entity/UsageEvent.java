@@ -67,6 +67,15 @@ public class UsageEvent {
     @Column(name = "user_agent", length = 255)
     private String userAgent;
 
+    @Column(name = "outcome_category", nullable = false, length = 32)
+    private String outcomeCategory = "ALLOWED";
+
+    @Column(name = "rate_limit_plan", length = 32)
+    private String rateLimitPlan;
+
+    @Column(name = "correlation_id", length = 64)
+    private String correlationId;
+
     public UsageEvent() {
     }
 
@@ -220,6 +229,30 @@ public class UsageEvent {
 
     public void setUserAgent(String userAgent) {
         this.userAgent = userAgent;
+    }
+
+    public String getOutcomeCategory() {
+        return outcomeCategory;
+    }
+
+    public void setOutcomeCategory(String outcomeCategory) {
+        this.outcomeCategory = outcomeCategory;
+    }
+
+    public String getRateLimitPlan() {
+        return rateLimitPlan;
+    }
+
+    public void setRateLimitPlan(String rateLimitPlan) {
+        this.rateLimitPlan = rateLimitPlan;
+    }
+
+    public String getCorrelationId() {
+        return correlationId;
+    }
+
+    public void setCorrelationId(String correlationId) {
+        this.correlationId = correlationId;
     }
 
     @Override

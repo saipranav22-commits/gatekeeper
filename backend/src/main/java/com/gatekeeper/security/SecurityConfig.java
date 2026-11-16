@@ -2,6 +2,7 @@ package com.gatekeeper.security;
 
 import com.gatekeeper.gateway.filter.ConsumerApiKeyAuthenticationFilter;
 import com.gatekeeper.gateway.filter.ConsumerRateLimitFilter;
+import com.gatekeeper.gateway.filter.GatewayUsageTrackingFilter;
 import com.gatekeeper.security.filter.GatekeeperAccessDeniedHandler;
 import com.gatekeeper.security.filter.GatekeeperAuthenticationEntryPoint;
 import com.gatekeeper.security.filter.JwtAuthenticationFilter;
@@ -47,6 +48,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final ConsumerApiKeyAuthenticationFilter consumerApiKeyAuthFilter;
     private final ConsumerRateLimitFilter consumerRateLimitFilter;
+    private final GatewayUsageTrackingFilter gatewayUsageTrackingFilter;
     private final GatekeeperAuthenticationEntryPoint authenticationEntryPoint;
     private final GatekeeperAccessDeniedHandler accessDeniedHandler;
 
@@ -54,11 +56,13 @@ public class SecurityConfig {
             JwtAuthenticationFilter jwtAuthenticationFilter,
             @org.springframework.beans.factory.annotation.Autowired(required = false) ConsumerApiKeyAuthenticationFilter consumerApiKeyAuthFilter,
             @org.springframework.beans.factory.annotation.Autowired(required = false) ConsumerRateLimitFilter consumerRateLimitFilter,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) GatewayUsageTrackingFilter gatewayUsageTrackingFilter,
             GatekeeperAuthenticationEntryPoint authenticationEntryPoint,
             GatekeeperAccessDeniedHandler accessDeniedHandler) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.consumerApiKeyAuthFilter = consumerApiKeyAuthFilter;
         this.consumerRateLimitFilter = consumerRateLimitFilter;
+        this.gatewayUsageTrackingFilter = gatewayUsageTrackingFilter;
         this.authenticationEntryPoint = authenticationEntryPoint;
         this.accessDeniedHandler = accessDeniedHandler;
     }
@@ -88,6 +92,13 @@ public class SecurityConfig {
         }
         if (consumerRateLimitFilter != null && consumerApiKeyAuthFilter != null) {
             http.addFilterAfter(consumerRateLimitFilter, ConsumerApiKeyAuthenticationFilter.class);
+        }
+        if (gatewayUsageTrackingFilter != null) {
+            if (consumerApiKeyAuthFilter != null) {
+                http.addFilterBefore(gatewayUsageTrackingFilter, ConsumerApiKeyAuthenticationFilter.class);
+            } else {
+                http.addFilterBefore(gatewayUsageTrackingFilter, UsernamePasswordAuthenticationFilter.class);
+            }
         }
 
         return http.build();

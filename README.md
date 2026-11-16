@@ -787,18 +787,167 @@ The script executes 18 comprehensive verification checks:
 16. Immediate key revocation enforcement (Key A revoked $\to$ 401, Key B active)
 17. Security boundary isolation (Admin JWT on gateway $\to$ 401; Consumer API key on management $\to$ 401)
 18. Consumer soft-deletion lifecycle enforcement (Key B immediately invalidated with 401)
-6. Key B generation (`gateway:invoke` only)
-7. Key C generation (`metrics:read` lacking `gateway:invoke`)
-8. Missing API key rejection (`GET /api/v1/gateway/demo` $\to$ 401)
-9. Malformed API key rejection (`GET /api/v1/gateway/demo` $\to$ 401)
-10. Scope enforcement check (`GET /api/v1/gateway/demo` with Key C $\to$ 403 with zero quota deducted)
-11. Valid request verification with Key A (`RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`)
-12. Quota sharing verification with Key B (remaining tokens decremented across keys)
-13. Specific scope gating on `/api/v1/gateway/orders` (Key B $\to$ 403, Key A $\to$ 200)
-14. Rapid quota exhaustion loop ($\to$ HTTP 429 with `Retry-After`)
-15. Immediate key revocation enforcement (Key A revoked $\to$ 401, Key B active)
-16. Security boundary isolation (Admin JWT on gateway $\to$ 401; Consumer API key on management $\to$ 401)
-17. Consumer soft-deletion lifecycle enforcement (Key B immediately invalidated with 401)
+
+---
+
+## Phase 3C: Asynchronous Usage Tracking & Analytics Pipeline
+
+Phase 3C introduces a high-throughput, asynchronous telemetry and operational analytics architecture for the Gatekeeper gateway. It decouples gateway request execution from database persistence using Redis Streams and atomic batch persistence workers, guaranteeing zero hot-path database write overhead.
+
+### 1. Architectural Overview
+
+```mermaid
+flowchart TD
+    Client["Client / Consumer Request"] -->|X-API-Key| TrackingFilter["GatewayUsageTrackingFilter"]
+    TrackingFilter -->|Timing & Correlation| AuthFilter["ConsumerApiKeyAuthenticationFilter"]
+    AuthFilter --> RateLimitFilter["ConsumerRateLimitFilter"]
+    RateLimitFilter --> DemoController["GatewayDemoController"]
+    DemoController -->|HTTP 200 / 403 / 429| TrackingFilter
+
+    subgraph Asynchronous Telemetry Subsystem
+        TrackingFilter -.->|Non-blocking publishAsync| Publisher["UsageEventPublisher<br/>(ArrayBlockingQueue)"]
+        Publisher -.->|XADD MAXLEN ~50000| RedisStream["Redis Stream<br/>(gatekeeper:stream:usage_events)"]
+        RedisStream -->|XREADGROUP COUNT 200| BatchConsumer["UsageEventBatchConsumer<br/>(gatekeeper-usage-group)"]
+        BatchConsumer -->|Batch INSERT ON CONFLICT DO NOTHING| UsageTable[("PostgreSQL<br/>usage_events")]
+        BatchConsumer -->|GREATEST Monotonic UPDATE| ApiKeysTable[("PostgreSQL<br/>api_keys.last_used_at")]
+        BatchConsumer -.->|Poison / Retries > 3| DLQTable[("PostgreSQL<br/>usage_event_dead_letter")]
+        BatchConsumer -->|XACK post-commit| RedisStream
+    end
+
+    subgraph Operational Analytics REST APIs
+        Admin["Admin / Analyst JWT"] -->|GET /api/v1/analytics/*| AnalyticsController["AnalyticsController"]
+        AnalyticsController --> AnalyticsService["AnalyticsService"]
+        AnalyticsService -->|Server-side SQL Aggregations| UsageTable
+    end
+```
+
+### 2. Telemetry Semantics & Data Contract
+
+Each gateway request outcome is captured into an immutable `UsageEventRecord`:
+- **Unique Event ID**: UUID generated at telemetry capture.
+- **Timestamp**: UTC `Instant` of event creation.
+- **Correlation ID**: Sourced from request header `X-Request-Id` (or generated UUID), attached to both request attributes and HTTP response headers.
+- **Endpoint Route**: Normalized allowlisted template (e.g., `/api/v1/gateway/demo`, `/api/v1/gateway/orders`) to prevent unbounded metric cardinality attacks.
+- **HTTP Method & Status**: Request verb and HTTP response status (200, 403, 429, 503).
+- **Outcome Category**: Standardized enum (`ALLOWED`, `RATE_LIMITED`, `SCOPE_DENIED`, `SERVICE_UNAVAILABLE`, `UNAUTHORIZED`).
+- **Processing Latency (`latencyMs`)**: Measures the total gateway request duration from initial filter entry to response generation.
+- **Consumer & Key Attribution**:
+  - Authenticated requests capture `consumerId`, `apiKeyId`, `consumerEmailSnapshot`, `keyPrefixSnapshot`, and `rateLimitPlan`.
+  - Missing, blank, or invalid keys (HTTP 401 with no principal) do NOT fabricate consumer identities and never persist raw credentials.
+  - Safe audit snapshots preserve context even if the consumer or key is subsequently soft-deleted or modified.
+
+### 3. Redis Streams Pipeline & Batch Persistence
+
+- **Dedicated Stream Key**: `gatekeeper:stream:usage_events`.
+- **Consumer Group**: `gatekeeper-usage-group` (consumer name: `worker-1`).
+- **Asynchronous Publisher**:
+  - Bounded in-memory submission queue (`ArrayBlockingQueue(10000)`).
+  - Controlled thread pool (2 core, 4 max daemon threads).
+  - Saturation policy: drops excess events with throttled warnings and atomic drop counters, never blocking the gateway hot path.
+  - Approximate stream trimming (`MAXLEN ~ 50000`) prevents unbounded Redis memory consumption.
+- **Batch Consumer & Database Worker**:
+  - Scheduled batch polling every 1000ms reading up to 200 events per cycle.
+  - Safe foreign key pre-validation: validates whether `consumer_id` and `api_key_id` exist in PostgreSQL before insertion. If an entity was deleted before the batch landed, foreign key columns are set to `NULL` while audit snapshots (`consumerEmailSnapshot`, `keyPrefixSnapshot`) are safely retained.
+  - Database Idempotency: inserts use PostgreSQL `INSERT INTO usage_events ... ON CONFLICT (id) DO NOTHING`.
+  - Transactional Commit & Acknowledgments: Redis `XACK` is executed **only after** the PostgreSQL transaction successfully commits. If a database error occurs, rollback is triggered and messages remain in the stream for retry.
+  - Poison-Message & Dead-Letter Handling: unparseable payloads or messages exceeding max retries (3) are routed to `usage_event_dead_letter` and acknowledged in the main stream to prevent pipeline stalling.
+  - Crash Recovery: periodically scans the Pending Entries List (`XPENDING` / `XREADGROUP ... 0`) to reprocess messages abandoned by dead workers.
+
+### 4. Monotonic `lastUsedAt` Tracking
+
+- `ApiKeyService.validateKey` operates in `@Transactional(readOnly = true)` without issuing synchronous database updates on the request hot path.
+- In-memory aggregation across the batch computes the latest timestamp per API key.
+- Keys are updated asynchronously using monotonic maximum semantics:
+  ```sql
+  UPDATE api_keys
+  SET last_used_at = :newTimestamp
+  WHERE id = :keyId
+    AND (last_used_at IS NULL OR last_used_at < :newTimestamp)
+    AND is_deleted = false
+  ```
+- Guarantees that older or out-of-order batches never overwrite newer timestamps, and soft-deleted or revoked keys are never reactivated.
+
+### 5. Database Migrations (V5)
+
+Flyway migration `V5__enhance_usage_events_and_indexes.sql`:
+1. Enhances `usage_events` with `outcome_category` (VARCHAR(32)), `rate_limit_plan` (VARCHAR(32)), and `correlation_id` (VARCHAR(64)).
+2. Adds performance indexes:
+   - `idx_usage_events_outcome_timestamp` on `(outcome_category, timestamp DESC)`
+   - `idx_usage_events_consumer_timestamp_status` on `(consumer_id, timestamp DESC, http_status)`
+   - `idx_usage_events_correlation_id` on `(correlation_id)`
+   - `idx_usage_events_plan_timestamp` on `(rate_limit_plan, timestamp DESC)`
+3. Creates `usage_event_dead_letter` table with indices for unprocessable telemetry.
+
+### 6. Analytics REST APIs
+
+All analytics endpoints require administrator JWT authentication with roles `ROLE_SUPER_ADMIN`, `ROLE_ADMIN`, or `ROLE_ANALYST`. Consumer API keys are rejected with HTTP 401.
+
+| Endpoint | Method | Roles | Description |
+|---|---|---|---|
+| `/api/v1/analytics/overview` | `GET` | SUPER_ADMIN, ADMIN, ANALYST | Global metrics: total, allowed, rate-limited, scope-denied, errors, denial %, and usage by plan |
+| `/api/v1/analytics/timeseries` | `GET` | SUPER_ADMIN, ADMIN, ANALYST | Bucketed traffic over time (`hourly` or `daily` granularity) |
+| `/api/v1/analytics/consumers/{id}` | `GET` | SUPER_ADMIN, ADMIN, ANALYST | Specific consumer metrics, first/last seen, endpoint & key prefix breakdown |
+| `/api/v1/analytics/consumers/{id}/usage` | `GET` | SUPER_ADMIN, ADMIN, ANALYST | Paginated detailed audit log events for a consumer |
+| `/api/v1/analytics/top-consumers` | `GET` | SUPER_ADMIN, ADMIN, ANALYST | Top consumers ranked by total gateway request volume |
+
+#### Example: Analytics Overview (`GET /api/v1/analytics/overview`)
+
+```json
+{
+  "totalRequests": 1250,
+  "allowedRequests": 1180,
+  "rateLimitedRequests": 55,
+  "scopeDeniedRequests": 15,
+  "errorRequests": 0,
+  "rateLimitDenialPercentage": 4.4,
+  "usageByPlan": {
+    "FREE": 720,
+    "STARTER": 380,
+    "PRO": 150
+  },
+  "windowStart": "2026-11-16T00:50:00Z",
+  "windowEnd": "2026-11-17T00:50:00Z"
+}
+```
+
+### 7. Automated Test Suite (186 Passing Tests)
+
+The test suite contains 31 new automated tests across unit and integration levels:
+- `UsageEventRecordTest`: Immutability, contract fields, and OutcomeCategory enum values.
+- `UsageEventPublisherTest`: Asynchronous submission, non-blocking queue behavior, saturation drop counting, safe shutdown.
+- `UsageEventPipelineIntegrationTest`: Real Redis Streams and PostgreSQL batch persistence, idempotent replay, monotonic `last_used_at` updates, poison-message DLQ routing.
+- `AnalyticsServiceIntegrationTest`: SQL server-side aggregations, overview calculations, hourly/daily time series, consumer stats, pagination, top consumers, and date validation.
+- `AnalyticsControllerTest`: RBAC permissions (`SUPER_ADMIN`, `ADMIN`, `ANALYST` allowed; unauthenticated and consumer API keys rejected with 401), input validation.
+- `GatewayUsageTrackingIntegrationTest`: End-to-end HTTP gateway requests generating telemetry, correlation ID propagation, scope denial capture, and missing key handling.
+
+### 8. Live Verification
+
+Run the PowerShell 5.1 live verification script:
+
+```powershell
+.\verify-usage-analytics.ps1
+```
+
+Verification covers 18 end-to-end checks:
+1. Health check verification (`GET /api/v1/health`)
+2. Secure administrator authentication (`POST /api/v1/auth/login`)
+3. Plan query (`GET /api/v1/plans`)
+4. Test consumer creation (`POST /api/v1/consumers`)
+5. API key generation (`POST /api/v1/consumers/{id}/keys`)
+6. Verification that `lastUsedAt` is initially null
+7. Allowed traffic generation (`GET /api/v1/gateway/demo` with `X-Request-Id`)
+8. Scope-denied traffic generation (`GET /api/v1/gateway/orders` $\to$ 403)
+9. Quota exhaustion burst (`GET /api/v1/gateway/demo` $\to$ 429)
+10. Bounded polling for stream batch persistence in PostgreSQL
+11. Overview analytics verification (`GET /api/v1/analytics/overview`)
+12. Time-series analytics verification (`GET /api/v1/analytics/timeseries?granularity=hourly`)
+13. Specific consumer analytics verification (`GET /api/v1/analytics/consumers/{id}`)
+14. Paginated usage events audit verification (`GET /api/v1/analytics/consumers/{id}/usage`)
+15. Top consumers ranking verification (`GET /api/v1/analytics/top-consumers`)
+16. Monotonic `lastUsedAt` persistence verification on the API key
+17. Security isolation verification (anonymous access $\to$ 401; consumer API key $\to$ 401)
+18. Test consumer cleanup and soft deletion (`DELETE /api/v1/consumers/{id}`)
+
 
 
 
