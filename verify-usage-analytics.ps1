@@ -195,9 +195,15 @@ if ($keyRes.StatusCode -ne 201) {
 }
 
 $keyJson = $keyRes.Body | ConvertFrom-Json
-$keyId = $keyJson.key.id
+$metadata = if ($keyJson.metadata) { $keyJson.metadata } else { $keyJson.key }
+$keyId = if ($metadata -and $metadata.id) { $metadata.id } else { $keyJson.id }
+$keyPrefix = if ($metadata -and $metadata.keyPrefix) { $metadata.keyPrefix } else { $keyJson.keyPrefix }
 $plainKey = $keyJson.plaintextKey
-$keyPrefix = $keyJson.key.keyPrefix
+
+if (-not $keyId -or -not $plainKey) {
+    Write-Host "  [FAIL] Failed to extract API key ID or plaintext key from response: $($keyRes.Body)" -ForegroundColor Red
+    exit 1
+}
 
 $keyHeaders = @{
     "X-API-Key" = $plainKey
@@ -215,6 +221,10 @@ if ($keysListRes.StatusCode -ne 200) {
 }
 $keysListJson = $keysListRes.Body | ConvertFrom-Json
 $targetKey = $keysListJson | Where-Object { $_.id -eq $keyId }
+if (-not $targetKey) {
+    Write-Host "  [FAIL] Key with ID '$keyId' not found in consumer key list." -ForegroundColor Red
+    exit 1
+}
 if ($targetKey.lastUsedAt) {
     Write-Host "  [FAIL] Expected lastUsedAt to be null before traffic, found: $($targetKey.lastUsedAt)" -ForegroundColor Red
     exit 1
@@ -395,15 +405,29 @@ if (-not $foundSelf) {
 # 16. Verify Eventual Monotonic lastUsedAt Persistence
 # ------------------------------------------------------------------------------
 Write-Host "`n[16/18] Verifying Eventual Monotonic lastUsedAt Persistence..." -ForegroundColor Yellow
-$updatedKeysRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/consumers/$consumerId/keys" -Method "Get" -Headers $adminHeaders
-$updatedKeysJson = $updatedKeysRes.Body | ConvertFrom-Json
-$updatedTargetKey = $updatedKeysJson | Where-Object { $_.id -eq $keyId }
+$maxLastUsedPollSeconds = 12
+$lastUsedPopulated = $false
+$lastUsedValue = $null
 
-if (-not $updatedTargetKey.lastUsedAt) {
-    Write-Host "  [FAIL] lastUsedAt was not asynchronously updated on API key." -ForegroundColor Red
+for ($i = 1; $i -le $maxLastUsedPollSeconds; $i++) {
+    $updatedKeysRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/consumers/$consumerId/keys" -Method "Get" -Headers $adminHeaders
+    if ($updatedKeysRes.StatusCode -eq 200) {
+        $updatedKeysJson = $updatedKeysRes.Body | ConvertFrom-Json
+        $updatedTargetKey = $updatedKeysJson | Where-Object { $_.id -eq $keyId }
+        if ($updatedTargetKey -and $updatedTargetKey.lastUsedAt) {
+            $lastUsedPopulated = $true
+            $lastUsedValue = $updatedTargetKey.lastUsedAt
+            break
+        }
+    }
+    Start-Sleep -Seconds 1
+}
+
+if (-not $lastUsedPopulated) {
+    Write-Host "  [FAIL] lastUsedAt was not asynchronously updated on API key within $maxLastUsedPollSeconds seconds." -ForegroundColor Red
     exit 1
 }
-Write-Host "  [OK] API key lastUsedAt successfully populated: $($updatedTargetKey.lastUsedAt)" -ForegroundColor Green
+Write-Host "  [OK] API key lastUsedAt successfully populated: $lastUsedValue" -ForegroundColor Green
 
 # ------------------------------------------------------------------------------
 # 17. Verify Security Isolation & RBAC

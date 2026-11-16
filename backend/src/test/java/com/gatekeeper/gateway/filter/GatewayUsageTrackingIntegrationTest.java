@@ -131,6 +131,19 @@ class GatewayUsageTrackingIntegrationTest {
         assertThat(event.getOutcomeCategory()).isEqualTo("ALLOWED");
         assertThat(event.getCorrelationId()).isEqualTo(correlationId);
         assertThat(event.getRateLimitPlan()).isEqualTo("FREE");
+
+        // Verify API key attribution and asynchronous lastUsedAt update
+        assertThat(keyResult.metadata().id()).isNotNull();
+        assertThat(event.getApiKey()).isNotNull();
+        assertThat(event.getApiKey().getId()).isEqualTo(keyResult.metadata().id());
+
+        ApiKey updatedKey = apiKeyRepository.findById(keyResult.metadata().id()).orElseThrow();
+        assertThat(updatedKey.getLastUsedAt()).isNotNull();
+
+        List<com.gatekeeper.apikey.dto.ApiKeyMetadataDto> keyDtos = apiKeyService.listKeysForConsumer(consumer.getId());
+        assertThat(keyDtos).isNotEmpty();
+        assertThat(keyDtos.get(0).lastUsedAt()).isNotNull();
+        assertThat(keyDtos.get(0).lastUsedAt()).isEqualTo(updatedKey.getLastUsedAt());
     }
 
     @Test
