@@ -118,7 +118,7 @@ public class ApiKey {
 
     public void revoke(String reason) {
         this.status = ApiKeyStatus.REVOKED;
-        this.revokedAt = Instant.now();
+        this.revokedAt = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
         this.revocationReason = reason;
     }
 

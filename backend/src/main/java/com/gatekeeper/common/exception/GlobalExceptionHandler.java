@@ -13,6 +13,8 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -119,6 +121,30 @@ public class GlobalExceptionHandler {
             request.getRequestURI()
         );
         return new ResponseEntity<>(errorResponse, HttpStatus.METHOD_NOT_ALLOWED);
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException ex, HttpServletRequest request) {
+        log.warn("Unsupported media type on {}: {}", request.getRequestURI(), ex.getMessage());
+        ErrorResponse errorResponse = ErrorResponse.of(
+            HttpStatus.UNSUPPORTED_MEDIA_TYPE.value(),
+            HttpStatus.UNSUPPORTED_MEDIA_TYPE.getReasonPhrase(),
+            ex.getMessage() != null ? ex.getMessage() : "Unsupported media type",
+            request.getRequestURI()
+        );
+        return new ResponseEntity<>(errorResponse, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotAcceptableException.class)
+    public ResponseEntity<ErrorResponse> handleMediaTypeNotAcceptable(HttpMediaTypeNotAcceptableException ex, HttpServletRequest request) {
+        log.warn("Not acceptable media type on {}: {}", request.getRequestURI(), ex.getMessage());
+        ErrorResponse errorResponse = ErrorResponse.of(
+            HttpStatus.NOT_ACCEPTABLE.value(),
+            HttpStatus.NOT_ACCEPTABLE.getReasonPhrase(),
+            ex.getMessage() != null ? ex.getMessage() : "Requested media type is not acceptable",
+            request.getRequestURI()
+        );
+        return new ResponseEntity<>(errorResponse, HttpStatus.NOT_ACCEPTABLE);
     }
 
     @ExceptionHandler(NoResourceFoundException.class)

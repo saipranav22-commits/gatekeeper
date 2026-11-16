@@ -260,7 +260,7 @@ class ApiKeyServiceTest {
     }
 
     @Test
-    @DisplayName("Revoke key is idempotent")
+    @DisplayName("Revoke key is idempotent across three repeated calls and preserves original audit data")
     void testRevokeKeyIdempotent() {
         UUID keyId = UUID.randomUUID();
         ApiKey apiKey = new ApiKey(this.activeConsumer, "Test Key", "gk_live_1234567890abcdef", "digest");
@@ -271,9 +271,59 @@ class ApiKeyServiceTest {
         ApiKeyMetadataDto firstRevoke = this.apiKeyService.revokeKey(keyId, "Security incident");
         assertThat(firstRevoke.status()).isEqualTo(ApiKeyStatus.REVOKED);
         assertThat(firstRevoke.revocationReason()).isEqualTo("Security incident");
+        assertThat(firstRevoke.revokedAt()).isNotNull();
 
+        // 2nd revocation
         ApiKeyMetadataDto secondRevoke = this.apiKeyService.revokeKey(keyId, "Another reason");
         assertThat(secondRevoke.status()).isEqualTo(ApiKeyStatus.REVOKED);
         assertThat(secondRevoke.revocationReason()).isEqualTo("Security incident"); // unchanged
+        assertThat(secondRevoke.revokedAt()).isEqualTo(firstRevoke.revokedAt()); // unchanged
+
+        // 3rd revocation
+        ApiKeyMetadataDto thirdRevoke = this.apiKeyService.revokeKey(keyId, null);
+        assertThat(thirdRevoke.status()).isEqualTo(ApiKeyStatus.REVOKED);
+        assertThat(thirdRevoke.revocationReason()).isEqualTo("Security incident"); // unchanged
+        assertThat(thirdRevoke.revokedAt()).isEqualTo(firstRevoke.revokedAt()); // unchanged
+    }
+
+    @Test
+    @DisplayName("Concurrent revocation calls handled safely without corruption")
+    void testConcurrentRevocation() throws Exception {
+        UUID keyId = UUID.randomUUID();
+        ApiKey apiKey = new ApiKey(this.activeConsumer, "Test Key", "gk_live_concurrent1234", "digest");
+        apiKey.setId(keyId);
+
+        when(this.apiKeyRepository.findById(keyId)).thenReturn(Optional.of(apiKey));
+
+        int threadCount = 10;
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(threadCount);
+        java.util.concurrent.CountDownLatch startLatch = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch doneLatch = new java.util.concurrent.CountDownLatch(threadCount);
+        java.util.List<ApiKeyMetadataDto> results = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+
+        for (int i = 0; i < threadCount; i++) {
+            final int idx = i;
+            executor.submit(() -> {
+                try {
+                    startLatch.await();
+                    ApiKeyMetadataDto res = this.apiKeyService.revokeKey(keyId, "Thread Reason " + idx);
+                    results.add(res);
+                } catch (Exception ignored) {
+                } finally {
+                    doneLatch.countDown();
+                }
+            });
+        }
+
+        startLatch.countDown();
+        doneLatch.await();
+        executor.shutdown();
+
+        assertThat(results).hasSize(threadCount);
+        for (ApiKeyMetadataDto res : results) {
+            assertThat(res.status()).isEqualTo(ApiKeyStatus.REVOKED);
+            assertThat(res.revokedAt()).isNotNull();
+        }
+        assertThat(apiKey.getStatus()).isEqualTo(ApiKeyStatus.REVOKED);
     }
 }

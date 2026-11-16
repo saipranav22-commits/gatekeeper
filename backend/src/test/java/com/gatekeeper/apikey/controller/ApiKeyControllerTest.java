@@ -5,6 +5,7 @@ import com.gatekeeper.apikey.dto.ApiKeyCreationRequest;
 import com.gatekeeper.apikey.dto.RevokeApiKeyRequest;
 import com.gatekeeper.apikey.entity.ApiKey;
 import com.gatekeeper.apikey.repository.ApiKeyRepository;
+import com.gatekeeper.apikey.service.ApiKeyService;
 import com.gatekeeper.consumer.entity.ApiConsumer;
 import com.gatekeeper.consumer.repository.ApiConsumerRepository;
 import com.gatekeeper.plan.entity.SubscriptionPlan;
@@ -64,6 +65,9 @@ class ApiKeyControllerTest {
 
     @Autowired
     private AdminUserRepository adminUserRepository;
+
+    @Autowired
+    private ApiKeyService apiKeyService;
 
     @Autowired
     private JwtService jwtService;
@@ -187,27 +191,108 @@ class ApiKeyControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/v1/consumers/{consumerId}/keys/{keyId}/revoke revokes key with audit reason")
-    void testRevokeKeySuccess() throws Exception {
+    @DisplayName("POST /api/v1/consumers/{consumerId}/keys/{keyId}/revoke revokes key and is idempotent across repeated calls")
+    void testRevokeKeyIdempotentRepeatedCalls() throws Exception {
         ApiKey key = new ApiKey(testConsumer, "Revocable Key", "gk_live_revokepref1", "digest_val");
         ApiKey saved = apiKeyRepository.saveAndFlush(key);
 
         RevokeApiKeyRequest request = new RevokeApiKeyRequest("Key compromised during pen-test");
 
-        mockMvc.perform(post("/api/v1/consumers/{consumerId}/keys/{keyId}/revoke", testConsumer.getId(), saved.getId())
+        // 1st Revocation: with JSON body and reason -> 200 OK, status REVOKED
+        MvcResult firstResult = mockMvc.perform(post("/api/v1/consumers/{consumerId}/keys/{keyId}/revoke", testConsumer.getId(), saved.getId())
                 .header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.status", is("REVOKED")))
             .andExpect(jsonPath("$.revocationReason", is("Key compromised during pen-test")))
-            .andExpect(jsonPath("$.revokedAt").isNotEmpty());
+            .andExpect(jsonPath("$.revokedAt").isNotEmpty())
+            .andReturn();
 
-        // Repeated revocation is idempotent and returns 200
-        mockMvc.perform(post("/api/v1/consumers/{consumerId}/keys/{keyId}/revoke", testConsumer.getId(), saved.getId())
-                .header("Authorization", "Bearer " + superAdminToken))
+        String firstResponseStr = firstResult.getResponse().getContentAsString();
+        String initialRevokedAt = objectMapper.readTree(firstResponseStr).get("revokedAt").asText();
+
+        // 2nd Revocation: simulating PowerShell default (application/x-www-form-urlencoded with empty body) -> 200 OK, reason & revokedAt preserved
+        MvcResult secondResult = mockMvc.perform(post("/api/v1/consumers/{consumerId}/keys/{keyId}/revoke", testConsumer.getId(), saved.getId())
+                .header("Authorization", "Bearer " + superAdminToken)
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.status", is("REVOKED")));
+            .andExpect(jsonPath("$.status", is("REVOKED")))
+            .andExpect(jsonPath("$.revocationReason", is("Key compromised during pen-test")))
+            .andExpect(jsonPath("$.revokedAt", is(initialRevokedAt)))
+            .andReturn();
+
+        // 3rd Revocation: with another JSON body and different reason -> 200 OK, original reason & revokedAt STILL preserved
+        RevokeApiKeyRequest differentRequest = new RevokeApiKeyRequest("Attempted overwrite reason");
+        mockMvc.perform(post("/api/v1/consumers/{consumerId}/keys/{keyId}/revoke", testConsumer.getId(), saved.getId())
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(differentRequest)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.status", is("REVOKED")))
+            .andExpect(jsonPath("$.revocationReason", is("Key compromised during pen-test")))
+            .andExpect(jsonPath("$.revokedAt", is(initialRevokedAt)));
+
+        // Confirm database state: status remains REVOKED and key validation fails
+        ApiKey reloaded = apiKeyRepository.findById(saved.getId()).orElseThrow();
+        assertThat(reloaded.getStatus()).isEqualTo(com.gatekeeper.apikey.entity.ApiKeyStatus.REVOKED);
+        assertThat(reloaded.getRevocationReason()).isEqualTo("Key compromised during pen-test");
+    }
+
+    @Test
+    @DisplayName("Revoke key: cross-consumer boundary violation returns 404 Not Found")
+    void testRevokeKeyCrossConsumerReturns404() throws Exception {
+        ApiKey keyBelongingToOther = new ApiKey(otherConsumer, "Other Key", "gk_live_otherprefix2", "digest_val");
+        ApiKey saved = apiKeyRepository.saveAndFlush(keyBelongingToOther);
+
+        mockMvc.perform(post("/api/v1/consumers/{consumerId}/keys/{keyId}/revoke", testConsumer.getId(), saved.getId())
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new RevokeApiKeyRequest("Cross-tenant attempt"))))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.status", is(404)));
+    }
+
+    @Test
+    @DisplayName("Revoke key: unauthenticated caller returns 401 Unauthorized")
+    void testRevokeKeyUnauthenticatedReturns401() throws Exception {
+        ApiKey key = new ApiKey(testConsumer, "Unauth Revoke Key", "gk_live_unauthpref", "digest_val");
+        ApiKey saved = apiKeyRepository.saveAndFlush(key);
+
+        mockMvc.perform(post("/api/v1/consumers/{consumerId}/keys/{keyId}/revoke", testConsumer.getId(), saved.getId()))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.status", is(401)));
+    }
+
+    @Test
+    @DisplayName("Revoke key: ANALYST role returns 403 Forbidden")
+    void testRevokeKeyAnalystForbiddenReturns403() throws Exception {
+        ApiKey key = new ApiKey(testConsumer, "Analyst Revoke Key", "gk_live_analystpref", "digest_val");
+        ApiKey saved = apiKeyRepository.saveAndFlush(key);
+
+        mockMvc.perform(post("/api/v1/consumers/{consumerId}/keys/{keyId}/revoke", testConsumer.getId(), saved.getId())
+                .header("Authorization", "Bearer " + analystToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(new RevokeApiKeyRequest("Analyst attempt"))))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.status", is(403)));
+    }
+
+    @Test
+    @DisplayName("Revoke key: revocation reason exceeding 255 characters returns 400 Bad Request")
+    void testRevokeKeyReasonTooLongReturns400() throws Exception {
+        ApiKey key = new ApiKey(testConsumer, "Long Reason Key", "gk_live_longpref12", "digest_val");
+        ApiKey saved = apiKeyRepository.saveAndFlush(key);
+
+        String tooLongReason = "A".repeat(256);
+        RevokeApiKeyRequest request = new RevokeApiKeyRequest(tooLongReason);
+
+        mockMvc.perform(post("/api/v1/consumers/{consumerId}/keys/{keyId}/revoke", testConsumer.getId(), saved.getId())
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(request)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.status", is(400)));
     }
 
     @Test

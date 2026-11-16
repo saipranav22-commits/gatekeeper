@@ -34,7 +34,7 @@ try {
         exit 1
     }
 } catch {
-    Write-Host "  [FAIL] Backend unreachable at $BaseUrl: $_" -ForegroundColor Red
+    Write-Host "  [FAIL] Backend unreachable at ${BaseUrl}: $_" -ForegroundColor Red
     exit 1
 }
 
@@ -272,26 +272,67 @@ try {
 # ------------------------------------------------------------------------------
 Write-Host "`n[9/10] Testing POST $BaseUrl/api/v1/consumers/$consumerId/keys/$createdKeyId/revoke..." -ForegroundColor Yellow
 try {
+    # 1st Revocation: JSON body with explicit reason
     $revokeBody = @{ reason = "Live verification test complete" } | ConvertTo-Json
-    $revoked = Invoke-RestMethod -Uri "$BaseUrl/api/v1/consumers/$consumerId/keys/$createdKeyId/revoke" `
+    $revoked1 = Invoke-RestMethod -Uri "$BaseUrl/api/v1/consumers/$consumerId/keys/$createdKeyId/revoke" `
         -Method Post `
         -Headers $authHeaders `
         -ContentType "application/json" `
         -Body $revokeBody
 
-    if ($revoked.status -eq "REVOKED" -and $revoked.revocationReason -eq "Live verification test complete") {
-        Write-Host "  [OK] Key revoked successfully: HTTP 200 OK (status: REVOKED)" -ForegroundColor Green
+    if ($revoked1.status -eq "REVOKED" -and $revoked1.revocationReason -eq "Live verification test complete" -and $revoked1.revokedAt) {
+        Write-Host "  [OK] 1st Revocation successful: HTTP 200 OK (status: REVOKED)" -ForegroundColor Green
+        Write-Host "       Revoked At: $($revoked1.revokedAt)" -ForegroundColor White
+        Write-Host "       Reason    : $($revoked1.revocationReason)" -ForegroundColor White
     } else {
-        Write-Host "  [FAIL] Expected REVOKED status, got: $($revoked.status)" -ForegroundColor Red
+        Write-Host "  [FAIL] 1st Revocation failed or unexpected status: $($revoked1.status)" -ForegroundColor Red
         exit 1
     }
 
-    # Idempotent re-revocation test
-    $reRevoked = Invoke-RestMethod -Uri "$BaseUrl/api/v1/consumers/$consumerId/keys/$createdKeyId/revoke" `
+    $initialRevokedAt = $revoked1.revokedAt
+    $initialReason = $revoked1.revocationReason
+    $dtInitial = [DateTimeOffset]::Parse($initialRevokedAt)
+
+    # 2nd Revocation: PowerShell default (empty body, urlencoded default)
+    $revoked2 = Invoke-RestMethod -Uri "$BaseUrl/api/v1/consumers/$consumerId/keys/$createdKeyId/revoke" `
         -Method Post `
         -Headers $authHeaders
-    if ($reRevoked.status -eq "REVOKED") {
-        Write-Host "  [OK] Idempotent revocation confirmed (HTTP 200 OK)." -ForegroundColor Green
+
+    $dtRev2 = [DateTimeOffset]::Parse($revoked2.revokedAt)
+    if ($revoked2.status -eq "REVOKED" -and $revoked2.revocationReason -eq $initialReason -and [Math]::Abs(($dtRev2 - $dtInitial).TotalMilliseconds) -lt 5) {
+        Write-Host "  [OK] 2nd Revocation (idempotent, empty body): HTTP 200 OK" -ForegroundColor Green
+        Write-Host "       Audit preserved: revokedAt and reason unchanged." -ForegroundColor Green
+    } else {
+        Write-Host "  [FAIL] 2nd Revocation altered state or failed!" -ForegroundColor Red
+        exit 1
+    }
+
+    # 3rd Revocation: JSON body with different reason (confirming original reason is preserved)
+    $dupBody = @{ reason = "Attempted overwrite reason" } | ConvertTo-Json
+    $revoked3 = Invoke-RestMethod -Uri "$BaseUrl/api/v1/consumers/$consumerId/keys/$createdKeyId/revoke" `
+        -Method Post `
+        -Headers $authHeaders `
+        -ContentType "application/json" `
+        -Body $dupBody
+
+    $dtRev3 = [DateTimeOffset]::Parse($revoked3.revokedAt)
+    if ($rev3.status -eq "REVOKED" -and $revoked3.revocationReason -eq $initialReason -and [Math]::Abs(($dtRev3 - $dtInitial).TotalMilliseconds) -lt 5) {
+        Write-Host "  [OK] 3rd Revocation (idempotent, different reason body): HTTP 200 OK" -ForegroundColor Green
+        Write-Host "       Audit preserved: original reason and timestamp maintained." -ForegroundColor Green
+    } else {
+        Write-Host "  [FAIL] 3rd Revocation altered state or failed!" -ForegroundColor Red
+        exit 1
+    }
+
+    # Verify key metadata via GET confirms status is REVOKED and no secrets leaked
+    $keyVerify = Invoke-RestMethod -Uri "$BaseUrl/api/v1/consumers/$consumerId/keys/$createdKeyId" `
+        -Method Get `
+        -Headers $authHeaders
+    if ($keyVerify.status -eq "REVOKED" -and -not $keyVerify.plaintextKey -and -not $keyVerify.secretDigest) {
+        Write-Host "  [OK] Verified key status remains REVOKED via GET lookup; no secrets exposed." -ForegroundColor Green
+    } else {
+        Write-Host "  [FAIL] Key status verification failed via GET lookup" -ForegroundColor Red
+        exit 1
     }
 } catch {
     Write-Host "  [FAIL] Revocation failed: $_" -ForegroundColor Red

@@ -1,5 +1,6 @@
 package com.gatekeeper.apikey.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gatekeeper.apikey.dto.ApiKeyCreationRequest;
 import com.gatekeeper.apikey.dto.ApiKeyCreationResult;
 import com.gatekeeper.apikey.dto.ApiKeyMetadataDto;
@@ -15,10 +16,12 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -39,9 +42,11 @@ import java.util.UUID;
 public class ApiKeyController {
 
     private final ApiKeyService apiKeyService;
+    private final ObjectMapper objectMapper;
 
-    public ApiKeyController(ApiKeyService apiKeyService) {
+    public ApiKeyController(ApiKeyService apiKeyService, ObjectMapper objectMapper) {
         this.apiKeyService = apiKeyService;
+        this.objectMapper = objectMapper;
     }
 
     @PostMapping
@@ -129,9 +134,9 @@ public class ApiKeyController {
 
     @PostMapping("/{keyId}/revoke")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN')")
-    @Operation(summary = "Revoke API key", description = "Revokes an API key with idempotent semantics. Stored audit reason is updated.")
+    @Operation(summary = "Revoke API key", description = "Revokes an API key with idempotent semantics. Stored audit reason and timestamp are preserved across repeated revocations.")
     @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "API key revoked successfully",
+        @ApiResponse(responseCode = "200", description = "API key revoked successfully or already revoked",
             content = @Content(schema = @Schema(implementation = ApiKeyMetadataDto.class))),
         @ApiResponse(responseCode = "400", description = "Bad Request - malformed UUID or invalid input"),
         @ApiResponse(responseCode = "401", description = "Unauthorized - invalid or missing JWT token"),
@@ -143,7 +148,13 @@ public class ApiKeyController {
             @PathVariable UUID consumerId,
             @Parameter(description = "API Key UUID", required = true)
             @PathVariable UUID keyId,
-            @Valid @RequestBody(required = false) RevokeApiKeyRequest request) {
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                description = "Optional revocation reason",
+                required = false,
+                content = @Content(schema = @Schema(implementation = RevokeApiKeyRequest.class))
+            )
+            @RequestBody(required = false) String rawBody,
+            HttpServletRequest request) {
 
         ApiKeyMetadataDto metadata = apiKeyService.getKeyMetadata(keyId);
         // Cross-consumer boundary guard
@@ -151,8 +162,41 @@ public class ApiKeyController {
             throw new ResourceNotFoundException("ApiKey", "id", keyId);
         }
 
-        String reason = request != null && request.reason() != null ? request.reason() : "Revoked by administrator";
+        String reason = extractRevocationReason(rawBody, request);
         ApiKeyMetadataDto revoked = apiKeyService.revokeKey(keyId, reason);
         return ResponseEntity.ok(revoked);
+    }
+
+    private String extractRevocationReason(String rawBody, HttpServletRequest request) {
+        String reason = null;
+        if (rawBody != null && !rawBody.trim().isBlank()) {
+            String trimmedBody = rawBody.trim();
+            if (trimmedBody.startsWith("{")) {
+                try {
+                    RevokeApiKeyRequest bodyObj = objectMapper.readValue(trimmedBody, RevokeApiKeyRequest.class);
+                    if (bodyObj != null && bodyObj.reason() != null && !bodyObj.reason().trim().isBlank()) {
+                        reason = bodyObj.reason().trim();
+                    }
+                } catch (Exception e) {
+                    throw new HttpMessageNotReadableException("Invalid JSON request body: " + e.getMessage(), e, null);
+                }
+            } else if (request != null) {
+                String formParam = request.getParameter("reason");
+                if (formParam != null && !formParam.trim().isBlank()) {
+                    reason = formParam.trim();
+                }
+            }
+        } else if (request != null) {
+            String formParam = request.getParameter("reason");
+            if (formParam != null && !formParam.trim().isBlank()) {
+                reason = formParam.trim();
+            }
+        }
+
+        if (reason != null && reason.length() > 255) {
+            throw new IllegalArgumentException("Revocation reason cannot exceed 255 characters");
+        }
+
+        return reason != null ? reason : "Revoked by administrator";
     }
 }
