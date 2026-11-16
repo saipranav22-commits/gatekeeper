@@ -14,6 +14,7 @@ import com.gatekeeper.common.exception.ResourceNotFoundException;
 import com.gatekeeper.consumer.entity.ApiConsumer;
 import com.gatekeeper.consumer.entity.ConsumerStatus;
 import com.gatekeeper.consumer.service.ConsumerService;
+import com.gatekeeper.ratelimit.dto.RateLimitPlan;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -91,6 +92,7 @@ public class ApiKeyService {
      * Validates a presented raw API key string against required scopes.
      * Does not expose the raw key or hash in return data or exceptions.
      */
+    @Transactional(readOnly = true)
     public ApiKeyValidationResult validateKey(String rawApiKey, Set<String> requiredScopes) {
         ApiKeyGenerator.ParsedApiKey parsed;
         try {
@@ -142,10 +144,19 @@ public class ApiKeyService {
             }
         }
 
-        // Update last used timestamp
-        apiKey.setLastUsedAt(Instant.now());
+        // Update last used timestamp (throttled to avoid redundant database writes under high concurrency)
+        Instant now = Instant.now();
+        if (apiKey.getLastUsedAt() == null || apiKey.getLastUsedAt().isBefore(now.minusSeconds(5))) {
+            apiKey.setLastUsedAt(now);
+        }
 
-        return ApiKeyValidationResult.valid(consumer, apiKey, assignedScopes);
+        // Adapt consumer subscription plan to immutable RateLimitPlan within transaction
+        RateLimitPlan rateLimitPlan = null;
+        if (consumer.getPlan() != null) {
+            rateLimitPlan = RateLimitPlan.fromSubscriptionPlan(consumer.getPlan());
+        }
+
+        return ApiKeyValidationResult.valid(consumer, apiKey, assignedScopes, rateLimitPlan);
     }
 
     /**

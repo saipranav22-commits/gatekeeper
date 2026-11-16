@@ -14,6 +14,9 @@ public interface ApiKeyRepository extends JpaRepository<ApiKey, UUID> {
 
     Optional<ApiKey> findByKeyPrefix(String keyPrefix);
 
+    @org.springframework.data.jpa.repository.Query("SELECT k FROM ApiKey k JOIN FETCH k.consumer c JOIN FETCH c.plan p LEFT JOIN FETCH k.scopes WHERE k.keyPrefix = :keyPrefix")
+    Optional<ApiKey> findByKeyPrefixWithDetails(@org.springframework.data.repository.query.Param("keyPrefix") String keyPrefix);
+
     Optional<ApiKey> findByKeyPrefixAndStatusAndIsDeletedFalse(String keyPrefix, ApiKeyStatus status);
 
     List<ApiKey> findByConsumerIdAndIsDeletedFalse(UUID consumerId);

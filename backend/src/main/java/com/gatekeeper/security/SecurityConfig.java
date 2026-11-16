@@ -1,10 +1,13 @@
 package com.gatekeeper.security;
 
+import com.gatekeeper.gateway.filter.ConsumerApiKeyAuthenticationFilter;
+import com.gatekeeper.gateway.filter.ConsumerRateLimitFilter;
 import com.gatekeeper.security.filter.GatekeeperAccessDeniedHandler;
 import com.gatekeeper.security.filter.GatekeeperAuthenticationEntryPoint;
 import com.gatekeeper.security.filter.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -22,13 +25,18 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  *   <li><b>Stateless Session Management:</b> The API is strictly stateless; no HTTP sessions
  *       or session cookies are created or stored ({@link SessionCreationPolicy#STATELESS}).</li>
  *   <li><b>CSRF Protection Disabled:</b> Cross-Site Request Forgery protection is disabled because
- *       Gatekeeper operates as a stateless REST API using HTTP {@code Authorization: Bearer <token>}
- *       headers. Browsers do not automatically attach bearer tokens to cross-origin requests,
- *       making standard CSRF exploits inapplicable.</li>
- *   <li><b>Fail-Secure Default:</b> Only {@code /api/v1/health} and {@code /api/v1/auth/login}
- *       are public. All other endpoints require explicit authentication.</li>
- *   <li><b>Separation of Admin and Consumer Auth:</b> Administrator JWT authentication operates
- *       independently from upcoming consumer API key rate-limiting proxies.</li>
+ *       Gatekeeper operates as a stateless REST API using HTTP headers (Authorization: Bearer or X-API-Key).
+ *       Browsers do not automatically attach these custom headers to cross-origin requests.</li>
+ *   <li><b>Separation of Filter Chains:</b>
+ *       <ol>
+ *         <li><b>Gateway Security Chain (Order 1):</b> Matches {@code /api/v1/gateway/**}. Requires valid
+ *             consumer {@code X-API-Key}, performs scope authorization, and applies atomic Token Bucket
+ *             rate limiting. Administrator JWTs cannot access this chain.</li>
+ *         <li><b>Management Security Chain (Order 2):</b> Matches all remaining routes. Requires administrator
+ *             JWT Bearer tokens. Only {@code /api/v1/health} and {@code /api/v1/auth/login} are public.
+ *             Consumer API keys cannot access management endpoints.</li>
+ *       </ol>
+ *   </li>
  * </ul>
  */
 @Configuration
@@ -37,20 +45,61 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final ConsumerApiKeyAuthenticationFilter consumerApiKeyAuthFilter;
+    private final ConsumerRateLimitFilter consumerRateLimitFilter;
     private final GatekeeperAuthenticationEntryPoint authenticationEntryPoint;
     private final GatekeeperAccessDeniedHandler accessDeniedHandler;
 
     public SecurityConfig(
             JwtAuthenticationFilter jwtAuthenticationFilter,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) ConsumerApiKeyAuthenticationFilter consumerApiKeyAuthFilter,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) ConsumerRateLimitFilter consumerRateLimitFilter,
             GatekeeperAuthenticationEntryPoint authenticationEntryPoint,
             GatekeeperAccessDeniedHandler accessDeniedHandler) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.consumerApiKeyAuthFilter = consumerApiKeyAuthFilter;
+        this.consumerRateLimitFilter = consumerRateLimitFilter;
         this.authenticationEntryPoint = authenticationEntryPoint;
         this.accessDeniedHandler = accessDeniedHandler;
     }
 
+    /**
+     * Consumer Gateway Filter Chain: dedicated to external consumer API traffic.
+     * Authenticates via X-API-Key and enforces atomic Redis token bucket rate limiting.
+     */
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    @Order(1)
+    public SecurityFilterChain gatewaySecurityFilterChain(HttpSecurity http) throws Exception {
+        http
+            .securityMatcher("/api/v1/gateway/**")
+            .csrf(AbstractHttpConfigurer::disable)
+            .cors(Customizer.withDefaults())
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .exceptionHandling(exceptions -> exceptions
+                .authenticationEntryPoint(authenticationEntryPoint)
+                .accessDeniedHandler(accessDeniedHandler)
+            )
+            .authorizeHttpRequests(authorize -> authorize
+                .anyRequest().authenticated()
+            );
+
+        if (consumerApiKeyAuthFilter != null) {
+            http.addFilterBefore(consumerApiKeyAuthFilter, UsernamePasswordAuthenticationFilter.class);
+        }
+        if (consumerRateLimitFilter != null && consumerApiKeyAuthFilter != null) {
+            http.addFilterAfter(consumerRateLimitFilter, ConsumerApiKeyAuthenticationFilter.class);
+        }
+
+        return http.build();
+    }
+
+    /**
+     * Administrator Management Filter Chain: dedicated to administrative REST APIs.
+     * Authenticates via Authorization: Bearer <admin-jwt>.
+     */
+    @Bean
+    @Order(2)
+    public SecurityFilterChain managementSecurityFilterChain(HttpSecurity http) throws Exception {
         http
             .csrf(AbstractHttpConfigurer::disable)
             .cors(Customizer.withDefaults())

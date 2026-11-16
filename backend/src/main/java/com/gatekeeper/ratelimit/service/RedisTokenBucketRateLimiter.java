@@ -83,6 +83,11 @@ public class RedisTokenBucketRateLimiter implements TokenBucketRateLimiter {
             }
 
             long allowedVal = ((Number) result.get(0)).longValue();
+            if (allowedVal == -1L) {
+                log.error("Malformed Redis bucket state detected for consumer {}. Failing closed.", consumerId);
+                throw new RateLimitUnavailableException("Malformed rate limit bucket state in Redis for consumer " + consumerId);
+            }
+
             long tokensRemaining = ((Number) result.get(1)).longValue();
             long bucketCapacity = ((Number) result.get(2)).longValue();
             long retryAfterSec = ((Number) result.get(3)).longValue();

@@ -331,8 +331,8 @@ class RedisTokenBucketRateLimiterTest {
     }
 
     @Test
-    @DisplayName("Scenario 13: Malformed Redis state self-healing")
-    void testMalformedRedisStateSelfHealing() {
+    @DisplayName("Scenario 13: Malformed Redis state fails closed with RateLimitUnavailableException")
+    void testMalformedRedisStateFailsClosed() {
         UUID consumerId = createTestConsumerId();
         String key = RedisTokenBucketRateLimiter.KEY_PREFIX + consumerId;
 
@@ -340,9 +340,22 @@ class RedisTokenBucketRateLimiterTest {
         stringRedisTemplate.opsForHash().put(key, "tokens", "corrupt_garbage");
         stringRedisTemplate.opsForHash().put(key, "last_refill_ms", "not_a_number");
 
-        // Evaluator must detect non-numeric fields and safely reinitialize the bucket
-        RateLimitDecision decision = rateLimiter.consume(consumerId, freePlan, 1);
+        // Evaluator must detect corrupt fields and fail closed with RateLimitUnavailableException (HTTP 503)
+        assertThatThrownBy(() -> rateLimiter.consume(consumerId, freePlan, 1))
+            .isInstanceOf(RateLimitUnavailableException.class)
+            .hasMessageContaining("Malformed rate limit bucket state in Redis");
+    }
 
+    @Test
+    @DisplayName("Scenario 13b: Legitimate first-time consumer initializes full bucket")
+    void testLegitimateFirstTimeInitialization() {
+        UUID consumerId = createTestConsumerId();
+        String key = RedisTokenBucketRateLimiter.KEY_PREFIX + consumerId;
+
+        // Ensure key does not exist
+        stringRedisTemplate.delete(key);
+
+        RateLimitDecision decision = rateLimiter.consume(consumerId, freePlan, 1);
         assertThat(decision.allowed()).isTrue();
         assertThat(decision.tokensRemaining()).isEqualTo(59);
         assertThat(decision.bucketCapacity()).isEqualTo(60);

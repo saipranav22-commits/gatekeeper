@@ -59,6 +59,7 @@ public class ApiKey {
     @Column(name = "revocation_reason", length = 255)
     private String revocationReason;
 
+    @org.hibernate.annotations.OptimisticLock(excluded = true)
     @Column(name = "last_used_at")
     private Instant lastUsedAt;
 

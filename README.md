@@ -570,7 +570,7 @@ A high-concurrency stress test was executed using JUnit 5 against the live `gate
 
 ### 7. Automated Test Suite
 
-The rate limiting engine is verified with 20 automated unit and integration tests (`RedisTokenBucketRateLimiterTest`):
+The rate limiting engine is verified with 22 automated unit and integration tests (`RedisTokenBucketRateLimiterTest`):
 1. Initial bucket capacity and single token consumption
 2. Sequential token consumption until exhaustion
 3. Empty bucket rejection and zero negative balance
@@ -583,14 +583,191 @@ The rate limiting engine is verified with 20 automated unit and integration test
 10. Plan downgrade clamping balance to lower capacity
 11. Redis key TTL setting and expiration
 12. Fail-closed on Redis outage (throwing `RateLimitUnavailableException`)
-13. Malformed Redis state self-healing
-14. Invalid request cost validation
-15. Null parameter validation
-16. Retry-After calculation accuracy
-17. Reset-After calculation accuracy
-18. Reset bucket clearing state in Redis
-19. SubscriptionPlan entity adapter overloads
-20. Local performance benchmark (5,000 operations across 20 threads)
+13. Corrupted Redis state fail-closed (returns `allowed = -1`, throws HTTP 503 `RateLimitUnavailableException`)
+14. Malformed Redis state self-healing on legitimate first-time consumer
+15. Invalid request cost validation
+16. Null parameter validation
+17. Retry-After calculation accuracy
+18. Reset-After calculation accuracy
+19. Reset bucket clearing state in Redis
+20. SubscriptionPlan entity adapter overloads
+21. Local performance benchmark (5,000 operations across 20 threads)
+
+---
+
+## Phase 3B: External API Key Authentication & HTTP Rate Limit Enforcement
+
+Phase 3B connects consumer API keys to the atomic Redis Token Bucket engine through a dedicated Spring Security HTTP filter pipeline and demonstrates quota enforcement over live HTTP traffic.
+
+### 1. Dual Security Filter Chain Architecture
+
+To maintain strict boundaries between internal administrator management and external consumer traffic, Gatekeeper configures two independent `SecurityFilterChain` beans:
+
+```mermaid
+flowchart TD
+    ClientReq["Incoming HTTP Request"] --> SecurityFilter["Spring Security Filter Chain Dispatcher"]
+
+    SecurityFilter -->|Path matches /api/v1/gateway/**| GatewayChain["Gateway Security Chain (@Order 1)"]
+    SecurityFilter -->|All other paths /api/v1/**| MgmtChain["Management Security Chain (@Order 2)"]
+
+    subgraph Gateway Pipeline
+        GatewayChain --> ApiKeyFilter["ConsumerApiKeyAuthenticationFilter"]
+        ApiKeyFilter -->|Missing / Invalid / Revoked / Expired| Err401["HTTP 401 Unauthorized (JSON)"]
+        ApiKeyFilter -->|Valid Key & Active Consumer| ScopeCheck["Scope Check (gateway:invoke, read:orders)"]
+        ScopeCheck -->|Insufficient Scopes| Err403["HTTP 403 Forbidden (No Token Deducted)"]
+        ScopeCheck -->|Authorized| RateLimitFilter["ConsumerRateLimitFilter"]
+        RateLimitFilter -->|Atomic Lua Eval: allowed=1| Controller["GatewayDemoController (/demo, /orders)"]
+        RateLimitFilter -->|Atomic Lua Eval: allowed=0| Err429["HTTP 429 Too Many Requests (Retry-After)"]
+        RateLimitFilter -->|Redis Unavailable / Malformed| Err503["HTTP 503 Service Unavailable"]
+        Controller -->|HTTP 200 OK| GatewayResp["Response with RateLimit-* Headers"]
+    end
+
+    subgraph Management Pipeline
+        MgmtChain --> PublicCheck{"Is /api/v1/health or /auth/login?"}
+        PublicCheck -->|Yes| PublicEndpoint["Allow Public Access (HTTP 200)"]
+        PublicCheck -->|No| JwtFilter["JwtAuthenticationFilter (Bearer JWT)"]
+        JwtFilter -->|Valid Admin JWT| MgmtControllers["Plans, Consumers, Keys Management Controllers"]
+        JwtFilter -->|Missing / Expired / Invalid| Admin401["HTTP 401 Unauthorized"]
+    end
+```
+
+### 2. Security Separation & Boundaries
+
+- **Consumer Key $\to$ Management Route**: A consumer API key sent via `X-API-Key` to `/api/v1/consumers` or `/api/v1/plans` is rejected with **HTTP 401 Unauthorized** by the management filter chain (which requires an `Authorization: Bearer <jwt>` header).
+- **Admin JWT $\to$ Gateway Route**: An administrator JWT sent via `Authorization: Bearer <jwt>` to `/api/v1/gateway/**` is rejected with **HTTP 401 Unauthorized** by `ConsumerApiKeyAuthenticationFilter` (which requires an `X-API-Key` header).
+- **Public Health Route**: `GET /api/v1/health` remains unauthenticated and excluded from both security filters.
+
+### 3. Execution Pipeline & Scope Pre-Authorization
+
+1. **API Key Extraction & Format Verification**:
+   - Header: `X-API-Key: gk_live_<prefix>_<secret>`
+   - Format: Must match `gk_(live|test)_[a-zA-Z0-9]{8}_[a-zA-Z0-9]{32}` (total 48 chars).
+   - Validation: Constant-time SHA-256 secret verification prevents timing attacks.
+   - Rejection: Missing, blank, duplicate, malformed, revoked, expired keys, or suspended consumers immediately terminate with standard JSON error responses and HTTP 401.
+2. **Scope Enforcement Before Rate Limiting**:
+   - Route `GET /api/v1/gateway/demo` requires scope `gateway:invoke`.
+   - Route `GET /api/v1/gateway/orders` requires scope `read:orders`.
+   - **Crucial Rule**: Scope authorization occurs *prior* to contacting Redis. If a request lacks required scopes, it returns **HTTP 403 Forbidden** immediately with **zero quota deducted**, protecting consumer balances from invalid calls.
+3. **Atomic Token Bucket Rate Limiting**:
+   - Consumers consume 1 token per authorized request via `RedisTokenBucketRateLimiter`.
+   - All keys of the same consumer share the consumer-level token bucket.
+4. **Standard HTTP Rate Limit Headers**:
+   - Every gateway response includes standard IETF-compliant rate limit headers:
+     - `RateLimit-Limit`: Bucket burst capacity.
+     - `RateLimit-Remaining`: Floor of remaining token balance.
+     - `RateLimit-Reset`: Integer seconds until the bucket is completely full.
+   - On quota exhaustion (**HTTP 429 Too Many Requests**):
+     - `Retry-After`: Integer seconds until at least 1 token is refilled.
+     - Response Body: RFC 7807 problem details JSON with `code: RATE_LIMIT_EXCEEDED`.
+5. **Fail-Closed Availability**:
+   - If Redis is down or data is corrupt, the system returns **HTTP 503 Service Unavailable** with `code: RATE_LIMIT_SERVICE_UNAVAILABLE`.
+   - Quota bypass is never permitted.
+
+### 4. Consumer Demonstration Endpoints
+
+| Endpoint | Method | Required Scope | Description |
+|---|---|---|---|
+| `/api/v1/gateway/demo` | `GET` | `gateway:invoke` | Returns consumer identity, rate limit tier, and gateway timestamp |
+| `/api/v1/gateway/orders` | `GET` | `read:orders` | Demonstrates endpoint-specific scope gating with mock order data |
+
+#### Example Request:
+
+```http
+GET /api/v1/gateway/demo HTTP/1.1
+Host: localhost:8080
+X-API-Key: gk_live_a1b2c3d4_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+#### Example Response (HTTP 200 OK):
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+RateLimit-Limit: 60
+RateLimit-Remaining: 59
+RateLimit-Reset: 1
+
+{
+  "status": "UP",
+  "consumerId": "4a71b123-5e92-4f11-8a90-e38029b3c4d1",
+  "consumerName": "Acme Corp",
+  "keyPrefix": "a1b2c3d4",
+  "plan": "FREE",
+  "timestamp": "2026-11-16T22:00:00Z"
+}
+```
+
+#### Example Response on Quota Exhaustion (HTTP 429 Too Many Requests):
+
+```http
+HTTP/1.1 429 Too Many Requests
+Content-Type: application/json
+Retry-After: 1
+RateLimit-Limit: 60
+RateLimit-Remaining: 0
+RateLimit-Reset: 60
+
+{
+  "timestamp": "2026-11-16T22:00:05Z",
+  "status": 429,
+  "error": "Too Many Requests",
+  "code": "RATE_LIMIT_EXCEEDED",
+  "message": "Rate limit quota exceeded. Retry after 1 seconds.",
+  "path": "/api/v1/gateway/demo"
+}
+```
+
+### 5. Automated Test Suite (149 Passing Tests)
+
+Phase 3B added 20 comprehensive HTTP integration tests in `GatewayRateLimitIntegrationTest`:
+1. Valid API key authentication on `/api/v1/gateway/demo` returns HTTP 200 with `RateLimit-*` headers.
+2. Missing `X-API-Key` returns HTTP 401 Unauthorized.
+3. Empty/whitespace `X-API-Key` returns HTTP 401 Unauthorized.
+4. Duplicate `X-API-Key` headers return HTTP 401 Unauthorized.
+5. Malformed API key prefix returns HTTP 401 Unauthorized.
+6. Unknown API key returns HTTP 401 Unauthorized.
+7. Revoked API key returns HTTP 401 Unauthorized.
+8. Expired API key returns HTTP 401 Unauthorized.
+9. Suspended consumer API key returns HTTP 401 Unauthorized.
+10. Soft-deleted consumer API key returns HTTP 401 Unauthorized.
+11. Insufficient scope on `/api/v1/gateway/demo` returns HTTP 403 Forbidden.
+12. Scope failure deducts zero tokens from Redis token bucket.
+13. Endpoint requiring specific scope (`GET /api/v1/gateway/orders`) returns HTTP 200 with `read:orders`.
+14. Endpoint requiring specific scope returns HTTP 403 without `read:orders`.
+15. Quota exhaustion returns HTTP 429 with `Retry-After` header.
+16. Multiple keys of same consumer share the consumer token bucket.
+17. Concurrent HTTP requests respect bucket capacity and do not overspend.
+18. Administrator JWT token rejected with HTTP 401 on gateway endpoints.
+19. Consumer API key rejected with HTTP 401 on management endpoints.
+20. Health check endpoint `/api/v1/health` accessible without authentication.
+
+### 6. Live Verification Script
+
+The end-to-end gateway and rate limiting pipeline can be verified using the PowerShell 5.1-compatible test script:
+
+```powershell
+.\verify-gateway-rate-limit.ps1
+```
+
+The script executes 17 comprehensive verification checks:
+1. Health check verification (`GET /api/v1/health`)
+2. Secure administrator authentication (`POST /api/v1/auth/login`)
+3. Plan query to retrieve `FREE` plan (`GET /api/v1/plans`)
+4. Isolated test consumer creation (`POST /api/v1/consumers`)
+5. Key A generation (`gateway:invoke`, `read:orders`)
+6. Key B generation (`gateway:invoke` only)
+7. Key C generation (`metrics:read` lacking `gateway:invoke`)
+8. Missing API key rejection (`GET /api/v1/gateway/demo` $\to$ 401)
+9. Malformed API key rejection (`GET /api/v1/gateway/demo` $\to$ 401)
+10. Scope enforcement check (`GET /api/v1/gateway/demo` with Key C $\to$ 403 with zero quota deducted)
+11. Valid request verification with Key A (`RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`)
+12. Quota sharing verification with Key B (remaining tokens decremented across keys)
+13. Specific scope gating on `/api/v1/gateway/orders` (Key B $\to$ 403, Key A $\to$ 200)
+14. Rapid quota exhaustion loop ($\to$ HTTP 429 with `Retry-After`)
+15. Immediate key revocation enforcement (Key A revoked $\to$ 401, Key B active)
+16. Security boundary isolation (Admin JWT on gateway $\to$ 401; Consumer API key on management $\to$ 401)
+17. Consumer soft-deletion lifecycle enforcement (Key B immediately invalidated with 401)
+
 
 
 
