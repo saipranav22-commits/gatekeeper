@@ -1,0 +1,26 @@
+# ==============================================================================
+# Gatekeeper Local Foundation Profile (foundation)
+# ==============================================================================
+# Purpose:
+#   Phase 1A foundation profile enabling the Spring Boot application to boot,
+#   compile, and pass tests without requiring live PostgreSQL or Redis servers.
+#
+# Mechanism:
+#   Excludes DataSource, Hibernate JPA, Flyway, and Redis auto-configuration.
+#   Production security filters and authorization rules remain active.
+# ==============================================================================
+
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration
+      - org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+
+logging:
+  level:
+    com.gatekeeper: INFO
+    org.springframework.security: INFO

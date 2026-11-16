@@ -1,0 +1,48 @@
+# Build artifacts
+target/
+**/target/
+*.class
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Maven
+.mvn/
+.m2/
+
+# IDE and Editor configurations
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+
+# Environment & Secrets
+.env
+*.env
+*.env.*
+*.local
+*.pem
+*.key
+*.pkcs12
+
+# Logs & temp files
+logs/
+*.log
+*.tmp
+*.bak
+temp/
+tmp/
+
+# OS specific
+.DS_Store
+Thumbs.db
+desktop.ini
