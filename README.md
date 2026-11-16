@@ -640,10 +640,13 @@ flowchart TD
 ### 3. Execution Pipeline & Scope Pre-Authorization
 
 1. **API Key Extraction & Format Verification**:
-   - Header: `X-API-Key: gk_live_<prefix>_<secret>`
-   - Format: Must match `gk_(live|test)_[a-zA-Z0-9]{8}_[a-zA-Z0-9]{32}` (total 48 chars).
+   - Header: `X-API-Key: gk_live_<publicId16Hex>_<secret43Base64Url>`
+   - Format: Must match `gk_live_[0-9a-f]{16}_[A-Za-z0-9_-]{43}` (total 68 characters, authored strictly by `ApiKeyGenerator`).
+   - Prefix Tag: `gk_live_` (8 characters).
+   - Public Lookup Prefix: `gk_live_<16hex>` (24 characters).
+   - Secret Material: 32 bytes (256 bits entropy) encoded as URL-safe unpadded Base64 (43 characters).
    - Validation: Constant-time SHA-256 secret verification prevents timing attacks.
-   - Rejection: Missing, blank, duplicate, malformed, revoked, expired keys, or suspended consumers immediately terminate with standard JSON error responses and HTTP 401.
+   - Rejection: Missing, blank, duplicate, malformed, non-hex prefix, invalid secret characters/length, revoked, expired keys, or suspended consumers immediately terminate with standard JSON error responses and HTTP 401.
 2. **Scope Enforcement Before Rate Limiting**:
    - Route `GET /api/v1/gateway/demo` requires scope `gateway:invoke`.
    - Route `GET /api/v1/gateway/orders` requires scope `read:orders`.
@@ -675,7 +678,7 @@ flowchart TD
 ```http
 GET /api/v1/gateway/demo HTTP/1.1
 Host: localhost:8080
-X-API-Key: gk_live_a1b2c3d4_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+X-API-Key: gk_live_0123456789abcdef_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-_AbCdE
 ```
 
 #### Example Response (HTTP 200 OK):
@@ -717,9 +720,17 @@ RateLimit-Reset: 60
 }
 ```
 
-### 5. Automated Test Suite (149 Passing Tests)
+### 5. Hot-Path Metadata & Access Tracking Architecture
 
-Phase 3B added 20 comprehensive HTTP integration tests in `GatewayRateLimitIntegrationTest`:
+To guarantee wire-speed performance under high concurrency:
+- `ApiKeyService.validateKey` operates in `@Transactional(readOnly = true)`.
+- No row locks or synchronous `UPDATE` statements are issued to PostgreSQL on the gateway hot path.
+- In-memory `lastUsedAt` modifications on the entity remain transient for caller inspection, completely eliminating database connection pool exhaustion and `OptimisticLockException` under load.
+- Persistent access tracking, time-series metrics, and asynchronous event streaming are cleanly decoupled and scheduled for Phase 3C.
+
+### 6. Automated Test Suite (155 Passing Tests)
+
+Phase 3B and 3B.1 hardened the HTTP gateway pipeline with 26 comprehensive integration tests in `GatewayRateLimitIntegrationTest`:
 1. Valid API key authentication on `/api/v1/gateway/demo` returns HTTP 200 with `RateLimit-*` headers.
 2. Missing `X-API-Key` returns HTTP 401 Unauthorized.
 3. Empty/whitespace `X-API-Key` returns HTTP 401 Unauthorized.
@@ -735,13 +746,21 @@ Phase 3B added 20 comprehensive HTTP integration tests in `GatewayRateLimitInteg
 13. Endpoint requiring specific scope (`GET /api/v1/gateway/orders`) returns HTTP 200 with `read:orders`.
 14. Endpoint requiring specific scope returns HTTP 403 without `read:orders`.
 15. Quota exhaustion returns HTTP 429 with `Retry-After` header.
-16. Multiple keys of same consumer share the consumer token bucket.
-17. Concurrent HTTP requests respect bucket capacity and do not overspend.
-18. Administrator JWT token rejected with HTTP 401 on gateway endpoints.
-19. Consumer API key rejected with HTTP 401 on management endpoints.
-20. Health check endpoint `/api/v1/health` accessible without authentication.
+16. Refill permits subsequent requests after quota exhaustion.
+17. Unauthorized environment prefix (`gk_test_`) rejected with HTTP 401.
+18. Incorrect public ID length and secret length rejected with HTTP 401.
+19. Non-URL-safe Base64 characters in secret rejected with HTTP 401.
+20. Mutated/tampered secret for valid prefix rejected with HTTP 401.
+21. Verified `lastUsedAt` is not written synchronously to PostgreSQL on hot path.
+22. Multiple keys of same consumer share the consumer token bucket.
+23. Different consumers have completely isolated quotas.
+24. Concurrent HTTP requests respect bucket capacity and do not overspend.
+25. Administrator JWT token rejected with HTTP 401 on gateway endpoints.
+26. Consumer API key rejected with HTTP 401 on management endpoints.
+27. Health check endpoint `/api/v1/health` accessible without authentication.
+28. No sensitive credentials leaked in error responses.
 
-### 6. Live Verification Script
+### 7. Live Verification Script
 
 The end-to-end gateway and rate limiting pipeline can be verified using the PowerShell 5.1-compatible test script:
 
@@ -749,12 +768,25 @@ The end-to-end gateway and rate limiting pipeline can be verified using the Powe
 .\verify-gateway-rate-limit.ps1
 ```
 
-The script executes 17 comprehensive verification checks:
+The script executes 18 comprehensive verification checks:
 1. Health check verification (`GET /api/v1/health`)
 2. Secure administrator authentication (`POST /api/v1/auth/login`)
 3. Plan query to retrieve `FREE` plan (`GET /api/v1/plans`)
 4. Isolated test consumer creation (`POST /api/v1/consumers`)
 5. Key A generation (`gateway:invoke`, `read:orders`)
+6. Key B generation (`gateway:invoke` only)
+7. Key C generation (`metrics:read` lacking `gateway:invoke`)
+8. Missing API key rejection (`GET /api/v1/gateway/demo` $\to$ 401)
+9. Malformed and unsupported prefix rejection (`gk_test_` $\to$ 401)
+10. Scope enforcement check (`GET /api/v1/gateway/demo` with Key C $\to$ 403 with zero quota deducted)
+11. Valid request verification with Key A (`RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`)
+12. Quota sharing verification with Key B (remaining tokens decremented across keys)
+13. Specific scope gating on `/api/v1/gateway/orders` (Key B $\to$ 403, Key A $\to$ 200)
+14. Rapid quota exhaustion loop ($\to$ HTTP 429 with `Retry-After`)
+15. Token bucket refill verification (subsequent requests succeed after wait $\to$ HTTP 200)
+16. Immediate key revocation enforcement (Key A revoked $\to$ 401, Key B active)
+17. Security boundary isolation (Admin JWT on gateway $\to$ 401; Consumer API key on management $\to$ 401)
+18. Consumer soft-deletion lifecycle enforcement (Key B immediately invalidated with 401)
 6. Key B generation (`gateway:invoke` only)
 7. Key C generation (`metrics:read` lacking `gateway:invoke`)
 8. Missing API key rejection (`GET /api/v1/gateway/demo` $\to$ 401)

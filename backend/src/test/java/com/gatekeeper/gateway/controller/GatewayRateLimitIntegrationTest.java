@@ -318,6 +318,113 @@ class GatewayRateLimitIntegrationTest {
     }
 
     @Test
+    @DisplayName("Scenario 13b: Refill permits subsequent requests after quota exhaustion")
+    void testRefillPermitsSubsequentRequests() throws Exception {
+        // Plan: capacity 1 token, refills 1 token every 1 second
+        SubscriptionPlan fastRefillPlan = planRepository.save(
+            new SubscriptionPlan("FAST_REFILL_" + UUID.randomUUID().toString().substring(0, 6), "Fast Refill", 1, 1, 1));
+        ApiConsumer consumer = createConsumer(fastRefillPlan);
+        ApiKeyCreationResult keyResult = createApiKey(consumer, Set.of("gateway:invoke"));
+
+        // 1st request succeeds
+        mockMvc.perform(get("/api/v1/gateway/demo")
+                .header(ConsumerApiKeyAuthenticationFilter.API_KEY_HEADER, keyResult.plaintextKey()))
+            .andExpect(status().isOk());
+
+        // 2nd request is immediately rejected with 429
+        mockMvc.perform(get("/api/v1/gateway/demo")
+                .header(ConsumerApiKeyAuthenticationFilter.API_KEY_HEADER, keyResult.plaintextKey()))
+            .andExpect(status().isTooManyRequests());
+
+        // Wait for refill window (1.1 seconds)
+        Thread.sleep(1100);
+
+        // Subsequent request succeeds after refill
+        mockMvc.perform(get("/api/v1/gateway/demo")
+                .header(ConsumerApiKeyAuthenticationFilter.API_KEY_HEADER, keyResult.plaintextKey()))
+            .andExpect(status().isOk())
+            .andExpect(header().string("RateLimit-Remaining", "0"));
+    }
+
+    @Test
+    @DisplayName("Scenario 13c: Specific format validation rejects invalid prefixes (e.g. gk_test_)")
+    void testInvalidPrefixRejected() throws Exception {
+        // Correct 68 character length but unauthorized environment prefix 'gk_test_'
+        String testEnvKey = "gk_test_0000000000000000_1234567890123456789012345678901234567890123";
+        mockMvc.perform(get("/api/v1/gateway/demo")
+                .header(ConsumerApiKeyAuthenticationFilter.API_KEY_HEADER, testEnvKey))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.status").value(401));
+    }
+
+    @Test
+    @DisplayName("Scenario 13d: Wrong public ID length or wrong secret length rejected")
+    void testWrongLengthComponentsRejected() throws Exception {
+        // Wrong public ID length (15 hex chars instead of 16)
+        String shortPrefixKey = "gk_live_000000000000000_1234567890123456789012345678901234567890123";
+        mockMvc.perform(get("/api/v1/gateway/demo")
+                .header(ConsumerApiKeyAuthenticationFilter.API_KEY_HEADER, shortPrefixKey))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.status").value(401));
+
+        // Wrong secret length (42 chars instead of 43)
+        String shortSecretKey = "gk_live_0000000000000000_123456789012345678901234567890123456789012";
+        mockMvc.perform(get("/api/v1/gateway/demo")
+                .header(ConsumerApiKeyAuthenticationFilter.API_KEY_HEADER, shortSecretKey))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.status").value(401));
+    }
+
+    @Test
+    @DisplayName("Scenario 13e: Invalid Base64URL characters in secret rejected")
+    void testInvalidBase64UrlCharactersRejected() throws Exception {
+        // Contains invalid characters '+' or '=' instead of URL-safe unpadded base64
+        String invalidCharsKey = "gk_live_0000000000000000_123456789012345678901234567890123456789012+";
+        mockMvc.perform(get("/api/v1/gateway/demo")
+                .header(ConsumerApiKeyAuthenticationFilter.API_KEY_HEADER, invalidCharsKey))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.status").value(401));
+    }
+
+    @Test
+    @DisplayName("Scenario 13f: Changed secret for valid existing key prefix rejected")
+    void testChangedSecretRejected() throws Exception {
+        ApiConsumer consumer = createConsumer(freePlan);
+        ApiKeyCreationResult keyResult = createApiKey(consumer, Set.of("gateway:invoke"));
+        String realKey = keyResult.plaintextKey();
+
+        // Mutate the last character of the secret
+        char lastChar = realKey.charAt(realKey.length() - 1);
+        char alteredChar = (lastChar == 'a') ? 'b' : 'a';
+        String tamperedKey = realKey.substring(0, realKey.length() - 1) + alteredChar;
+
+        mockMvc.perform(get("/api/v1/gateway/demo")
+                .header(ConsumerApiKeyAuthenticationFilter.API_KEY_HEADER, tamperedKey))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.status").value(401));
+    }
+
+    @Test
+    @DisplayName("Scenario 13g: Confirm lastUsedAt is not written synchronously to PostgreSQL on hot path")
+    void testLastUsedAtNotPersistedToPostgreSQLOnHotPath() throws Exception {
+        ApiConsumer consumer = createConsumer(freePlan);
+        ApiKeyCreationResult keyResult = createApiKey(consumer, Set.of("gateway:invoke"));
+        UUID keyId = keyResult.metadata().id();
+
+        ApiKey keyBefore = apiKeyRepository.findById(keyId).orElseThrow();
+        Instant initialLastUsed = keyBefore.getLastUsedAt(); // should be null
+
+        // Make successful gateway request
+        mockMvc.perform(get("/api/v1/gateway/demo")
+                .header(ConsumerApiKeyAuthenticationFilter.API_KEY_HEADER, keyResult.plaintextKey()))
+            .andExpect(status().isOk());
+
+        // Inspect fresh entity directly from PostgreSQL database
+        ApiKey keyAfter = apiKeyRepository.findById(keyId).orElseThrow();
+        assertThat(keyAfter.getLastUsedAt()).isEqualTo(initialLastUsed);
+    }
+
+    @Test
     @DisplayName("Scenario 14: Multiple API keys for same consumer share rate-limit quota")
     void testMultiKeyConsumerQuotaSharing() throws Exception {
         ApiConsumer consumer = createConsumer(freePlan);

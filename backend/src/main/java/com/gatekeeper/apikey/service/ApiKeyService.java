@@ -144,7 +144,11 @@ public class ApiKeyService {
             }
         }
 
-        // Update last used timestamp (throttled to avoid redundant database writes under high concurrency)
+        // Note: validateKey is executed with @Transactional(readOnly = true) to prevent database row locks,
+        // dirty-checking overhead, and optimistic lock contention on the gateway request hot path.
+        // Setting lastUsedAt here updates the in-memory entity for caller inspection, but does not issue
+        // synchronous UPDATE statements to PostgreSQL during readOnly transactions.
+        // Persistent access telemetry and usage tracking are cleanly decoupled and scheduled for Phase 3C.
         Instant now = Instant.now();
         if (apiKey.getLastUsedAt() == null || apiKey.getLastUsedAt().isBefore(now.minusSeconds(5))) {
             apiKey.setLastUsedAt(now);
