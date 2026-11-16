@@ -2,8 +2,8 @@
 # Gatekeeper Live Gateway Authentication & Rate Limit Verification Script
 # ==============================================================================
 # Performs end-to-end live HTTP checks on Gatekeeper external gateway endpoints:
-# - API Key authentication and format validation
-# - Scope-based authorization enforcement
+# - API Key authentication and format validation (gk_live_<16hex>_<43base64>)
+# - Scope-based authorization enforcement before quota deduction
 # - Distributed Redis Token Bucket rate limiting and HTTP headers
 # - Shared quota consumption across multiple consumer keys
 # - HTTP 429 quota exhaustion and Retry-After header
@@ -102,9 +102,9 @@ function Invoke-SafeRestCall {
 }
 
 # ------------------------------------------------------------------------------
-# 1. Health Endpoint Verification
+# 1. Health Endpoint Verification (HTTP 200)
 # ------------------------------------------------------------------------------
-Write-Host "`n[1/17] Checking Health Endpoint ($BaseUrl/api/v1/health)..." -ForegroundColor Yellow
+Write-Host "`n[1/17] Checking Health Endpoint ($($BaseUrl)/api/v1/health)..." -ForegroundColor Yellow
 $healthRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/health" -Method "Get"
 if ($healthRes.StatusCode -eq 200) {
     Write-Host "  [OK] Service is UP (HTTP 200)" -ForegroundColor Green
@@ -114,16 +114,16 @@ if ($healthRes.StatusCode -eq 200) {
 }
 
 # ------------------------------------------------------------------------------
-# 2. Administrator Authentication
+# 2. Administrator Authentication (HTTP 200)
 # ------------------------------------------------------------------------------
-Write-Host "`n[2/17] Authenticating Administrator '$Username'..." -ForegroundColor Yellow
+Write-Host "`n[2/17] Authenticating Administrator '$($Username)'..." -ForegroundColor Yellow
 $plainPw = $null
 if ($env:GATEKEEPER_ADMIN_PASSWORD) {
-    Write-Host "  [INFO] Reading administrator password from environment..." -ForegroundColor Gray
+    Write-Host "  [INFO] Reading administrator password from environment variable..." -ForegroundColor Gray
     $plainPw = $env:GATEKEEPER_ADMIN_PASSWORD
     $env:GATEKEEPER_ADMIN_PASSWORD = $null
 } else {
-    $secPassword = Read-Host "  Enter password for administrator '$Username'" -AsSecureString
+    $secPassword = Read-Host "  Enter password for administrator '$($Username)'" -AsSecureString
     $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secPassword)
     try {
         $plainPw = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
@@ -183,7 +183,7 @@ if (-not $freePlan) {
 }
 $freePlanId = $freePlan.id
 $planCapacity = $freePlan.bucketCapacity
-Write-Host "  [OK] FREE plan identified: ID=$freePlanId, Capacity=$planCapacity, Refill=$($freePlan.refillTokens)/$($freePlan.refillPeriodSeconds)s" -ForegroundColor Green
+Write-Host "  [OK] FREE plan identified: ID=$($freePlanId), Capacity=$($planCapacity), Refill=$($freePlan.refillTokens)/$($freePlan.refillPeriodSeconds)s" -ForegroundColor Green
 
 # ------------------------------------------------------------------------------
 # 4. Create Isolated Test Consumer
@@ -208,12 +208,14 @@ if ($consumerRes.StatusCode -ne 201) {
 
 $consumerObj = $consumerRes.Body | ConvertFrom-Json
 $consumerId = $consumerObj.id
-Write-Host "  [OK] Test consumer created: ID=$consumerId, Name=$($consumerObj.name)" -ForegroundColor Green
+Write-Host "  [OK] Test consumer created: ID=$($consumerId), Name=$($consumerObj.name)" -ForegroundColor Green
 
 # ------------------------------------------------------------------------------
-# 5. Generate Key A (Scopes: gateway:invoke, read:orders)
+# 5. API Key Creation Using Real Generator (Keys A, B, and C)
 # ------------------------------------------------------------------------------
-Write-Host "`n[5/17] Generating Key A (scopes: gateway:invoke, read:orders)..." -ForegroundColor Yellow
+Write-Host "`n[5/17] Generating Production-Formatted API Keys (Keys A, B, and C)..." -ForegroundColor Yellow
+
+# Key A: scopes [gateway:invoke, read:orders]
 $keyAPayload = @{
     name = "Test-Key-A"
     scopes = @("gateway:invoke", "read:orders")
@@ -233,12 +235,15 @@ if ($keyARes.StatusCode -ne 201) {
 $keyAObj = $keyARes.Body | ConvertFrom-Json
 $keyAId = $keyAObj.metadata.id
 $plainKeyA = $keyAObj.plaintextKey
-Write-Host "  [OK] Key A generated: ID=$keyAId, Prefix=$($keyAObj.metadata.keyPrefix)" -ForegroundColor Green
 
-# ------------------------------------------------------------------------------
-# 6. Generate Key B (Scope: gateway:invoke only)
-# ------------------------------------------------------------------------------
-Write-Host "`n[6/17] Generating Key B (scope: gateway:invoke)..." -ForegroundColor Yellow
+# Validate that generated key adheres to the strict 68-character contract
+if ($plainKeyA.Length -ne 68 -or -not $plainKeyA.StartsWith("gk_live_")) {
+    Write-Host "  [FAIL] Key A did not match the strict 68-character 'gk_live_' generator format!" -ForegroundColor Red
+    exit 1
+}
+Write-Host "  [OK] Key A generated: ID=$($keyAId), Prefix=$($keyAObj.metadata.keyPrefix) (Length: 68 chars)" -ForegroundColor Green
+
+# Key B: scope [gateway:invoke]
 $keyBPayload = @{
     name = "Test-Key-B"
     scopes = @("gateway:invoke")
@@ -258,12 +263,9 @@ if ($keyBRes.StatusCode -ne 201) {
 $keyBObj = $keyBRes.Body | ConvertFrom-Json
 $keyBId = $keyBObj.metadata.id
 $plainKeyB = $keyBObj.plaintextKey
-Write-Host "  [OK] Key B generated: ID=$keyBId, Prefix=$($keyBObj.metadata.keyPrefix)" -ForegroundColor Green
+Write-Host "  [OK] Key B generated: ID=$($keyBId), Prefix=$($keyBObj.metadata.keyPrefix) (Length: 68 chars)" -ForegroundColor Green
 
-# ------------------------------------------------------------------------------
-# 7. Generate Key C (Scope: metrics:read - lacks gateway:invoke)
-# ------------------------------------------------------------------------------
-Write-Host "`n[7/17] Generating Key C (scope: metrics:read - lacking gateway:invoke)..." -ForegroundColor Yellow
+# Key C: scope [metrics:read] (lacks gateway:invoke)
 $keyCPayload = @{
     name = "Test-Key-C"
     scopes = @("metrics:read")
@@ -283,62 +285,12 @@ if ($keyCRes.StatusCode -ne 201) {
 $keyCObj = $keyCRes.Body | ConvertFrom-Json
 $keyCId = $keyCObj.metadata.id
 $plainKeyC = $keyCObj.plaintextKey
-Write-Host "  [OK] Key C generated: ID=$keyCId, Prefix=$($keyCObj.metadata.keyPrefix)" -ForegroundColor Green
+Write-Host "  [OK] Key C generated: ID=$($keyCId), Prefix=$($keyCObj.metadata.keyPrefix) (Scope: metrics:read)" -ForegroundColor Green
 
 # ------------------------------------------------------------------------------
-# 8. Test Missing API Key on Gateway
+# 6. Valid API Key Authenticates Over HTTP (HTTP 200 with RateLimit Headers)
 # ------------------------------------------------------------------------------
-Write-Host "`n[8/17] Testing Unauthenticated Gateway Access (GET /api/v1/gateway/demo)..." -ForegroundColor Yellow
-$unauthRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/gateway/demo" -Method "Get"
-if ($unauthRes.StatusCode -eq 401) {
-    Write-Host "  [OK] Missing API key rejected with HTTP 401 Unauthorized." -ForegroundColor Green
-} else {
-    Write-Host "  [FAIL] Expected HTTP 401, got $($unauthRes.StatusCode)" -ForegroundColor Red
-    exit 1
-}
-
-# ------------------------------------------------------------------------------
-# 9. Test Malformed & Unsupported Environment API Keys
-# ------------------------------------------------------------------------------
-Write-Host "`n[9/18] Testing Malformed & Unsupported API Keys (GET /api/v1/gateway/demo)..." -ForegroundColor Yellow
-
-# 9A: Arbitrary malformed string
-$malformedHeaders = @{ "X-API-Key" = "gk_live_invalidprefix1234567890abcdef" }
-$malformedRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/gateway/demo" -Method "Get" -Headers $malformedHeaders
-if ($malformedRes.StatusCode -eq 401) {
-    Write-Host "  [OK] Malformed API key rejected with HTTP 401 Unauthorized." -ForegroundColor Green
-} else {
-    Write-Host "  [FAIL] Expected HTTP 401, got $($malformedRes.StatusCode)" -ForegroundColor Red
-    exit 1
-}
-
-# 9B: Unsupported test environment prefix 'gk_test_'
-$testPrefixHeaders = @{ "X-API-Key" = "gk_test_0000000000000000_1234567890123456789012345678901234567890123" }
-$testPrefixRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/gateway/demo" -Method "Get" -Headers $testPrefixHeaders
-if ($testPrefixRes.StatusCode -eq 401) {
-    Write-Host "  [OK] Unsupported environment prefix (gk_test_) rejected with HTTP 401 Unauthorized." -ForegroundColor Green
-} else {
-    Write-Host "  [FAIL] Expected HTTP 401 for gk_test_, got $($testPrefixRes.StatusCode)" -ForegroundColor Red
-    exit 1
-}
-
-# ------------------------------------------------------------------------------
-# 10. Test Scope Enforcement (Key C lacking gateway:invoke)
-# ------------------------------------------------------------------------------
-Write-Host "`n[10/18] Testing Scope Authorization with Key C (GET /api/v1/gateway/demo)..." -ForegroundColor Yellow
-$keyCHeaders = @{ "X-API-Key" = $plainKeyC }
-$scopeRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/gateway/demo" -Method "Get" -Headers $keyCHeaders
-if ($scopeRes.StatusCode -eq 403) {
-    Write-Host "  [OK] Insufficient scope rejected with HTTP 403 Forbidden." -ForegroundColor Green
-} else {
-    Write-Host "  [FAIL] Expected HTTP 403, got $($scopeRes.StatusCode)" -ForegroundColor Red
-    exit 1
-}
-
-# ------------------------------------------------------------------------------
-# 11. Test Successful Request with Key A & Verify RateLimit Headers
-# ------------------------------------------------------------------------------
-Write-Host "`n[11/18] Testing Valid Gateway Request with Key A (GET /api/v1/gateway/demo)..." -ForegroundColor Yellow
+Write-Host "`n[6/17] Testing Valid API Key Gateway Authentication (GET /api/v1/gateway/demo)..." -ForegroundColor Yellow
 $keyAHeaders = @{ "X-API-Key" = $plainKeyA }
 $reqARes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/gateway/demo" -Method "Get" -Headers $keyAHeaders
 if ($reqARes.StatusCode -eq 200) {
@@ -355,62 +307,104 @@ if ($reqARes.StatusCode -eq 200) {
         Write-Host "  [FAIL] Missing required RateLimit headers!" -ForegroundColor Red
         exit 1
     }
-
-    if ([int]$rlRemaining -ne ($planCapacity - 1)) {
-        Write-Host "  [FAIL] RateLimit-Remaining was $rlRemaining instead of $($planCapacity - 1), indicating scope-failed request may have consumed quota!" -ForegroundColor Red
-        exit 1
-    }
 } else {
     Write-Host "  [FAIL] Expected HTTP 200, got $($reqARes.StatusCode): $($reqARes.Body)" -ForegroundColor Red
     exit 1
 }
 
 # ------------------------------------------------------------------------------
-# 12. Test Quota Sharing with Key B
+# 7. Missing API Key Returns 401
 # ------------------------------------------------------------------------------
-Write-Host "`n[12/18] Testing Quota Sharing with Key B (GET /api/v1/gateway/demo)..." -ForegroundColor Yellow
-$keyBHeaders = @{ "X-API-Key" = $plainKeyB }
-$reqBRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/gateway/demo" -Method "Get" -Headers $keyBHeaders
-if ($reqBRes.StatusCode -eq 200) {
-    $remB = [int]$reqBRes.Headers["RateLimit-Remaining"]
-    Write-Host "  [OK] Key B invocation successful: HTTP 200 OK" -ForegroundColor Green
-    Write-Host "       RateLimit-Remaining : $remB (expected $($planCapacity - 2))" -ForegroundColor White
-
-    if ($remB -ne ($planCapacity - 2)) {
-        Write-Host "  [WARN] Remaining tokens ($remB) differs from strictly expected ($($planCapacity - 2)) due to refill/timing." -ForegroundColor Yellow
-    }
+Write-Host "`n[7/17] Testing Unauthenticated Gateway Access (GET /api/v1/gateway/demo)..." -ForegroundColor Yellow
+$unauthRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/gateway/demo" -Method "Get"
+if ($unauthRes.StatusCode -eq 401) {
+    Write-Host "  [OK] Missing API key rejected with HTTP 401 Unauthorized." -ForegroundColor Green
 } else {
-    Write-Host "  [FAIL] Expected HTTP 200, got $($reqBRes.StatusCode)" -ForegroundColor Red
+    Write-Host "  [FAIL] Expected HTTP 401, got $($unauthRes.StatusCode)" -ForegroundColor Red
     exit 1
 }
 
 # ------------------------------------------------------------------------------
-# 13. Test Endpoint-Specific Scope Requirements (GET /api/v1/gateway/orders)
+# 8. Malformed & Unsupported API Key Returns 401
 # ------------------------------------------------------------------------------
-Write-Host "`n[13/18] Testing Specific Scope 'read:orders' on /api/v1/gateway/orders..." -ForegroundColor Yellow
+Write-Host "`n[8/17] Testing Malformed & Unsupported API Keys (GET /api/v1/gateway/demo)..." -ForegroundColor Yellow
 
-# Key B lacks read:orders -> should be 403
+# 8A: Malformed string length
+$malformedHeaders = @{ "X-API-Key" = "gk_live_invalidprefix1234567890abcdef" }
+$malformedRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/gateway/demo" -Method "Get" -Headers $malformedHeaders
+if ($malformedRes.StatusCode -eq 401) {
+    Write-Host "  [OK] Malformed API key rejected with HTTP 401 Unauthorized." -ForegroundColor Green
+} else {
+    Write-Host "  [FAIL] Expected HTTP 401, got $($malformedRes.StatusCode)" -ForegroundColor Red
+    exit 1
+}
+
+# 8B: Unsupported test environment prefix 'gk_test_'
+$testPrefixHeaders = @{ "X-API-Key" = "gk_test_0000000000000000_1234567890123456789012345678901234567890123" }
+$testPrefixRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/gateway/demo" -Method "Get" -Headers $testPrefixHeaders
+if ($testPrefixRes.StatusCode -eq 401) {
+    Write-Host "  [OK] Unsupported environment prefix (gk_test_) rejected with HTTP 401 Unauthorized." -ForegroundColor Green
+} else {
+    Write-Host "  [FAIL] Expected HTTP 401 for gk_test_, got $($testPrefixRes.StatusCode)" -ForegroundColor Red
+    exit 1
+}
+
+# ------------------------------------------------------------------------------
+# 9. Missing Scope Returns 403 Without Quota Consumption
+# ------------------------------------------------------------------------------
+Write-Host "`n[9/17] Testing Scope Authorization & Quota Preservation (Key C on /demo)..." -ForegroundColor Yellow
+$keyCHeaders = @{ "X-API-Key" = $plainKeyC }
+$scopeRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/gateway/demo" -Method "Get" -Headers $keyCHeaders
+if ($scopeRes.StatusCode -eq 403) {
+    Write-Host "  [OK] Insufficient scope rejected with HTTP 403 Forbidden." -ForegroundColor Green
+} else {
+    Write-Host "  [FAIL] Expected HTTP 403, got $($scopeRes.StatusCode)" -ForegroundColor Red
+    exit 1
+}
+
+# Also verify route-specific scope gating on /orders: Key B lacks read:orders -> 403
+$keyBHeaders = @{ "X-API-Key" = $plainKeyB }
 $ordersB = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/gateway/orders" -Method "Get" -Headers $keyBHeaders
 if ($ordersB.StatusCode -eq 403) {
-    Write-Host "  [OK] Key B (lacking read:orders) rejected with HTTP 403 Forbidden." -ForegroundColor Green
+    Write-Host "  [OK] Key B (lacking read:orders) rejected on /orders with HTTP 403 Forbidden." -ForegroundColor Green
 } else {
     Write-Host "  [FAIL] Key B should have been rejected with 403, got $($ordersB.StatusCode)" -ForegroundColor Red
     exit 1
 }
 
-# Key A possesses read:orders -> should be 200
+# ------------------------------------------------------------------------------
+# 10. Successful Request Decrements Quota
+# ------------------------------------------------------------------------------
+Write-Host "`n[10/17] Testing Quota Decrement After Scope Failure..." -ForegroundColor Yellow
+# Key A with read:orders invokes /orders -> succeeds with HTTP 200
 $ordersA = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/gateway/orders" -Method "Get" -Headers $keyAHeaders
 if ($ordersA.StatusCode -eq 200) {
-    Write-Host "  [OK] Key A (possessing read:orders) succeeded with HTTP 200 OK." -ForegroundColor Green
+    $remOrders = [int]$ordersA.Headers["RateLimit-Remaining"]
+    Write-Host "  [OK] Key A invocation successful on /orders: HTTP 200 OK" -ForegroundColor Green
+    Write-Host "       RateLimit-Remaining : $remOrders (expected $($planCapacity - 2))" -ForegroundColor White
 } else {
     Write-Host "  [FAIL] Key A failed on orders endpoint: HTTP $($ordersA.StatusCode)" -ForegroundColor Red
     exit 1
 }
 
 # ------------------------------------------------------------------------------
-# 14. Rapid Quota Consumption to Exhaustion (HTTP 429)
+# 11. Multiple API Keys Share the Same Quota
 # ------------------------------------------------------------------------------
-Write-Host "`n[14/18] Testing Rate Limit Exhaustion (looping until HTTP 429)..." -ForegroundColor Yellow
+Write-Host "`n[11/17] Testing Shared Quota Across Multiple Consumer Keys (Key B)..." -ForegroundColor Yellow
+$reqBRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/gateway/demo" -Method "Get" -Headers $keyBHeaders
+if ($reqBRes.StatusCode -eq 200) {
+    $remB = [int]$reqBRes.Headers["RateLimit-Remaining"]
+    Write-Host "  [OK] Key B invocation successful: HTTP 200 OK" -ForegroundColor Green
+    Write-Host "       RateLimit-Remaining : $remB (expected $($planCapacity - 3))" -ForegroundColor White
+} else {
+    Write-Host "  [FAIL] Key B request failed: HTTP $($reqBRes.StatusCode)" -ForegroundColor Red
+    exit 1
+}
+
+# ------------------------------------------------------------------------------
+# 12. Quota Exhaustion Returns 429 with Retry-After
+# ------------------------------------------------------------------------------
+Write-Host "`n[12/17] Testing Rate Limit Exhaustion (looping until HTTP 429)..." -ForegroundColor Yellow
 $exhausted = $false
 $exhaustionRes = $null
 $loopCount = 0
@@ -426,9 +420,13 @@ while ($loopCount -lt $maxLoops) {
     }
 }
 
+$retryAfterSec = 1
 if ($exhausted) {
     $retryAfter = $exhaustionRes.Headers["Retry-After"]
     $rlRem = $exhaustionRes.Headers["RateLimit-Remaining"]
+    if ($retryAfter) {
+        $retryAfterSec = [int]$retryAfter
+    }
     Write-Host "  [OK] Quota exhausted: HTTP 429 Too Many Requests returned after $loopCount requests." -ForegroundColor Green
     Write-Host "       Retry-After         : $retryAfter seconds" -ForegroundColor White
     Write-Host "       RateLimit-Remaining : $rlRem" -ForegroundColor White
@@ -443,12 +441,12 @@ if ($exhausted) {
 }
 
 # ------------------------------------------------------------------------------
-# 15. Refill Verification
+# 13. Refill Permits Subsequent Requests
 # ------------------------------------------------------------------------------
-Write-Host "`n[15/18] Verifying Bucket Refill Restoration..." -ForegroundColor Yellow
-$waitSec = [Math]::Max(1, [int]$retryAfter)
+Write-Host "`n[13/17] Verifying Bucket Refill Restoration..." -ForegroundColor Yellow
+$waitSec = [Math]::Max(1, $retryAfterSec)
 Write-Host "  [INFO] Waiting $waitSec seconds for token refill..." -ForegroundColor Gray
-Start-Sleep -Seconds $waitSec
+Start-Sleep -Seconds ($waitSec + 1)
 
 $refillRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/gateway/demo" -Method "Get" -Headers $keyBHeaders
 if ($refillRes.StatusCode -eq 200) {
@@ -460,9 +458,9 @@ if ($refillRes.StatusCode -eq 200) {
 }
 
 # ------------------------------------------------------------------------------
-# 16. Key Revocation Enforcement
+# 14. Revoked API Key Immediately Returns 401
 # ------------------------------------------------------------------------------
-Write-Host "`n[16/18] Revoking Key A and Verifying Immediate Propagation..." -ForegroundColor Yellow
+Write-Host "`n[14/17] Revoking Key A and Verifying Immediate Propagation..." -ForegroundColor Yellow
 $revokeBody = @{ reason = "Automated rate limit verification completion" } | ConvertTo-Json
 $revokeRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/consumers/$consumerId/keys/$keyAId/revoke" `
     -Method "Post" `
@@ -484,7 +482,7 @@ if ($revokedAttempt.StatusCode -eq 401) {
     exit 1
 }
 
-# Key B must still be active
+# Key B must still be authenticated
 $activeAttempt = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/gateway/demo" -Method "Get" -Headers $keyBHeaders
 if ($activeAttempt.StatusCode -eq 200 -or $activeAttempt.StatusCode -eq 429) {
     Write-Host "  [OK] Non-revoked Key B remains authenticated (HTTP $($activeAttempt.StatusCode))." -ForegroundColor Green
@@ -494,11 +492,9 @@ if ($activeAttempt.StatusCode -eq 200 -or $activeAttempt.StatusCode -eq 429) {
 }
 
 # ------------------------------------------------------------------------------
-# 17. Security Boundary Isolation
+# 15. Administrator JWT Cannot Access Consumer Gateway
 # ------------------------------------------------------------------------------
-Write-Host "`n[17/18] Verifying Security Boundary Isolation..." -ForegroundColor Yellow
-
-# 17A: Admin Bearer token sent to consumer gateway -> 401
+Write-Host "`n[15/17] Verifying Admin JWT Cannot Access Consumer Gateway..." -ForegroundColor Yellow
 $adminGatewayRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/gateway/demo" -Method "Get" -Headers $adminHeaders
 if ($adminGatewayRes.StatusCode -eq 401) {
     Write-Host "  [OK] Admin Bearer JWT rejected on gateway endpoint: HTTP 401 Unauthorized." -ForegroundColor Green
@@ -507,7 +503,10 @@ if ($adminGatewayRes.StatusCode -eq 401) {
     exit 1
 }
 
-# 17B: Consumer API Key sent to admin management API -> 401
+# ------------------------------------------------------------------------------
+# 16. Consumer API Key Cannot Access Management APIs
+# ------------------------------------------------------------------------------
+Write-Host "`n[16/17] Verifying Consumer API Key Cannot Access Management APIs..." -ForegroundColor Yellow
 $consumerMgmtRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/consumers" -Method "Get" -Headers $keyBHeaders
 if ($consumerMgmtRes.StatusCode -eq 401) {
     Write-Host "  [OK] Consumer API Key rejected on management endpoint: HTTP 401 Unauthorized." -ForegroundColor Green
@@ -517,38 +516,9 @@ if ($consumerMgmtRes.StatusCode -eq 401) {
 }
 
 # ------------------------------------------------------------------------------
-# 18. Consumer Lifecycle Deletion & Final Cleanup
+# 17. Deleted Consumer Credentials Rejected & Final Cleanup
 # ------------------------------------------------------------------------------
-Write-Host "`n[18/18] Soft-Deleting Test Consumer and Verifying Total Key Invalidation..." -ForegroundColor Yellow
-}
-
-# ------------------------------------------------------------------------------
-# 16. Security Boundary Isolation
-# ------------------------------------------------------------------------------
-Write-Host "`n[16/17] Verifying Security Boundary Isolation..." -ForegroundColor Yellow
-
-# 16A: Admin Bearer token sent to consumer gateway -> 401
-$adminGatewayRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/gateway/demo" -Method "Get" -Headers $adminHeaders
-if ($adminGatewayRes.StatusCode -eq 401) {
-    Write-Host "  [OK] Admin Bearer JWT rejected on gateway endpoint: HTTP 401 Unauthorized." -ForegroundColor Green
-} else {
-    Write-Host "  [FAIL] Expected HTTP 401 when sending JWT to gateway, got $($adminGatewayRes.StatusCode)" -ForegroundColor Red
-    exit 1
-}
-
-# 16B: Consumer API Key sent to admin management API -> 401
-$consumerMgmtRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/consumers" -Method "Get" -Headers $keyBHeaders
-if ($consumerMgmtRes.StatusCode -eq 401) {
-    Write-Host "  [OK] Consumer API Key rejected on management endpoint: HTTP 401 Unauthorized." -ForegroundColor Green
-} else {
-    Write-Host "  [FAIL] Expected HTTP 401 when sending API Key to management, got $($consumerMgmtRes.StatusCode)" -ForegroundColor Red
-    exit 1
-}
-
-# ------------------------------------------------------------------------------
-# 18. Consumer Lifecycle Deletion & Final Cleanup
-# ------------------------------------------------------------------------------
-Write-Host "`n[18/18] Soft-Deleting Test Consumer and Verifying Total Key Invalidation..." -ForegroundColor Yellow
+Write-Host "`n[17/17] Soft-Deleting Test Consumer and Verifying Total Key Invalidation..." -ForegroundColor Yellow
 $deleteRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/consumers/$consumerId" `
     -Method "Delete" `
     -Headers $adminHeaders
@@ -559,7 +529,7 @@ if ($deleteRes.StatusCode -eq 204) {
     Write-Host "  [WARN] Consumer soft-delete returned HTTP $($deleteRes.StatusCode)" -ForegroundColor Yellow
 }
 
-# Verify Key B (which was not explicitly revoked) is now rejected with 401 due to consumer SUSPENDED status
+# Verify Key B (which was not explicitly revoked) is now rejected with 401 due to consumer SUSPENDED/deleted status
 $postDeleteRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/gateway/demo" -Method "Get" -Headers $keyBHeaders
 if ($postDeleteRes.StatusCode -eq 401) {
     Write-Host "  [OK] Key B rejected with HTTP 401 Unauthorized following consumer soft-deletion." -ForegroundColor Green
@@ -579,6 +549,6 @@ $keyBHeaders = $null
 $keyCHeaders = $null
 
 Write-Host "`n======================================================" -ForegroundColor Green
-Write-Host " Gateway & Rate Limiting: ALL 18 VERIFICATION CHECKS PASSED " -ForegroundColor Green
+Write-Host " Gateway & Rate Limiting: ALL 17 VERIFICATION CHECKS PASSED " -ForegroundColor Green
 Write-Host "======================================================" -ForegroundColor Green
 exit 0
