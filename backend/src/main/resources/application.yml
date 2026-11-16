@@ -6,44 +6,7 @@ spring:
   application:
     name: gatekeeper
   profiles:
-    default: foundation
-
-  # PostgreSQL Database Configuration (Environment variable placeholders)
-  datasource:
-    url: ${DB_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:gatekeeper}}
-    username: ${DB_USERNAME:gatekeeper}
-    password: ${DB_PASSWORD:gatekeeper}
-    driver-class-name: org.postgresql.Driver
-    hikari:
-      maximum-pool-size: ${DB_POOL_MAX:10}
-      minimum-idle: ${DB_POOL_MIN_IDLE:2}
-      idle-timeout: 30000
-      connection-timeout: 20000
-
-  # Spring Data JPA Configuration
-  jpa:
-    database-platform: org.hibernate.dialect.PostgreSQLDialect
-    open-in-view: false
-    hibernate:
-      ddl-auto: validate
-    show-sql: ${JPA_SHOW_SQL:false}
-    properties:
-      hibernate:
-        format_sql: false
-
-  # Flyway Migration Configuration
-  flyway:
-    enabled: ${FLYWAY_ENABLED:true}
-    baseline-on-migrate: true
-    locations: classpath:db/migration
-
-  # Redis Configuration
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
-      timeout: ${REDIS_TIMEOUT:2000ms}
+    default: local
 
 # Actuator Configuration
 management:
