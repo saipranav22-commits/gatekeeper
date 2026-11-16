@@ -10,6 +10,7 @@ import com.gatekeeper.apikey.service.ApiKeyService;
 import com.gatekeeper.consumer.entity.ApiConsumer;
 import com.gatekeeper.consumer.entity.ConsumerStatus;
 import com.gatekeeper.consumer.repository.ApiConsumerRepository;
+import com.gatekeeper.consumer.service.ConsumerService;
 import com.gatekeeper.gateway.filter.ConsumerApiKeyAuthenticationFilter;
 import com.gatekeeper.plan.entity.SubscriptionPlan;
 import com.gatekeeper.plan.repository.SubscriptionPlanRepository;
@@ -63,6 +64,9 @@ class GatewayRateLimitIntegrationTest {
 
     @Autowired
     private ApiConsumerRepository consumerRepository;
+
+    @Autowired
+    private ConsumerService consumerService;
 
     @Autowired
     private SubscriptionPlanRepository planRepository;
@@ -241,6 +245,38 @@ class GatewayRateLimitIntegrationTest {
                 .header(ConsumerApiKeyAuthenticationFilter.API_KEY_HEADER, keyResult.plaintextKey()))
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.status").value(401));
+    }
+
+    @Test
+    @DisplayName("Scenario 9b: Previously valid API key returns 401 immediately after consumer soft deletion regardless of Redis quota")
+    void testKeyReturns401ImmediatelyAfterConsumerSoftDelete() throws Exception {
+        ApiConsumer consumer = createConsumer(freePlan);
+        ApiKeyCreationResult keyResult = createApiKey(consumer, Set.of("gateway:invoke"));
+
+        // 1. Initial request succeeds with HTTP 200 (Redis tokens decremented to 59)
+        mockMvc.perform(get("/api/v1/gateway/demo")
+                .header(ConsumerApiKeyAuthenticationFilter.API_KEY_HEADER, keyResult.plaintextKey()))
+            .andExpect(status().isOk())
+            .andExpect(header().string("RateLimit-Remaining", "59"));
+
+        // 2. Soft-delete the consumer via ConsumerService
+        consumerService.softDeleteConsumer(consumer.getId());
+
+        // 3. Immediately retry with the same key -> MUST return 401 Unauthorized, NOT 429
+        mockMvc.perform(get("/api/v1/gateway/demo")
+                .header(ConsumerApiKeyAuthenticationFilter.API_KEY_HEADER, keyResult.plaintextKey()))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.status").value(401))
+            .andExpect(jsonPath("$.message").value(containsString("Invalid, expired or revoked API key")));
+
+        // 4. Verify PostgreSQL reflects soft deletion on both consumer and key
+        ApiConsumer consumerInDb = consumerRepository.findById(consumer.getId()).orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(consumerInDb.isDeleted()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(consumerInDb.getStatus()).isEqualTo(ConsumerStatus.DEACTIVATED);
+
+        ApiKey keyInDb = apiKeyRepository.findById(keyResult.metadata().id()).orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(keyInDb.isDeleted()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(keyInDb.getStatus()).isEqualTo(com.gatekeeper.apikey.entity.ApiKeyStatus.DEACTIVATED);
     }
 
     @Test

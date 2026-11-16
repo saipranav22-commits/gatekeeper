@@ -1,5 +1,6 @@
 package com.gatekeeper.consumer.service;
 
+import com.gatekeeper.apikey.repository.ApiKeyRepository;
 import com.gatekeeper.common.exception.DuplicateResourceException;
 import com.gatekeeper.common.exception.InvalidStateTransitionException;
 import com.gatekeeper.common.exception.ResourceNotFoundException;
@@ -35,6 +36,9 @@ class ConsumerServiceTest {
 
     @Mock
     private SubscriptionPlanService planService;
+
+    @Mock
+    private ApiKeyRepository apiKeyRepository;
 
     @InjectMocks
     private ConsumerService consumerService;

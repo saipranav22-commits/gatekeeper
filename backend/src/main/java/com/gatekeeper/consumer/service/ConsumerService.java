@@ -1,5 +1,7 @@
 package com.gatekeeper.consumer.service;
 
+import com.gatekeeper.apikey.entity.ApiKey;
+import com.gatekeeper.apikey.repository.ApiKeyRepository;
 import com.gatekeeper.common.exception.DuplicateResourceException;
 import com.gatekeeper.common.exception.InvalidStateTransitionException;
 import com.gatekeeper.common.exception.ResourceNotFoundException;
@@ -10,12 +12,14 @@ import com.gatekeeper.consumer.entity.ConsumerStatus;
 import com.gatekeeper.consumer.repository.ApiConsumerRepository;
 import com.gatekeeper.plan.entity.SubscriptionPlan;
 import com.gatekeeper.plan.service.SubscriptionPlanService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -29,10 +33,20 @@ public class ConsumerService {
 
     private final ApiConsumerRepository consumerRepository;
     private final SubscriptionPlanService planService;
+    private final ApiKeyRepository apiKeyRepository;
 
-    public ConsumerService(ApiConsumerRepository consumerRepository, SubscriptionPlanService planService) {
+    @Autowired
+    public ConsumerService(
+            ApiConsumerRepository consumerRepository,
+            SubscriptionPlanService planService,
+            @Autowired(required = false) ApiKeyRepository apiKeyRepository) {
         this.consumerRepository = consumerRepository;
         this.planService = planService;
+        this.apiKeyRepository = apiKeyRepository;
+    }
+
+    public ConsumerService(ApiConsumerRepository consumerRepository, SubscriptionPlanService planService) {
+        this(consumerRepository, planService, null);
     }
 
     public ConsumerDto createConsumer(CreateConsumerRequest request) {
@@ -114,6 +128,12 @@ public class ConsumerService {
     public ConsumerDto softDeleteConsumer(UUID consumerId) {
         ApiConsumer consumer = getActiveConsumerEntity(consumerId);
         consumer.softDelete();
+        if (this.apiKeyRepository != null) {
+            List<ApiKey> activeKeys = this.apiKeyRepository.findByConsumerIdAndIsDeletedFalse(consumerId);
+            for (ApiKey key : activeKeys) {
+                key.softDelete();
+            }
+        }
         return ConsumerDto.fromEntity(consumer);
     }
 

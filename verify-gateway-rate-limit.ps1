@@ -39,7 +39,7 @@ function Invoke-SafeRestCall {
     )
 
     $request = [System.Net.HttpWebRequest]::Create($Uri)
-    $request.Method = $Method
+    $request.Method = $Method.ToUpperInvariant()
     $request.KeepAlive = $false
     $request.Timeout = 10000
 
@@ -47,7 +47,7 @@ function Invoke-SafeRestCall {
         $request.Headers.Add($k, [string]$Headers[$k])
     }
 
-    if ($Body -and ($Method -eq "Post" -or $Method -eq "Put" -or $Method -eq "Patch")) {
+    if ($Body -and ($request.Method -eq "POST" -or $request.Method -eq "PUT" -or $request.Method -eq "PATCH")) {
         $request.ContentType = $ContentType
         $bytes = [System.Text.Encoding]::UTF8.GetBytes($Body)
         $request.ContentLength = $bytes.Length
@@ -526,7 +526,8 @@ $deleteRes = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/consumers/$consumerId" `
 if ($deleteRes.StatusCode -eq 204) {
     Write-Host "  [OK] Consumer soft-deleted: HTTP 204 No Content." -ForegroundColor Green
 } else {
-    Write-Host "  [WARN] Consumer soft-delete returned HTTP $($deleteRes.StatusCode)" -ForegroundColor Yellow
+    Write-Host "  [FAIL] Consumer soft-delete failed: expected HTTP 204, got $($deleteRes.StatusCode): $($deleteRes.Body)" -ForegroundColor Red
+    exit 1
 }
 
 # Verify Key B (which was not explicitly revoked) is now rejected with 401 due to consumer SUSPENDED/deleted status

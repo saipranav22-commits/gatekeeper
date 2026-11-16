@@ -1,6 +1,9 @@
 package com.gatekeeper.consumer.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.gatekeeper.apikey.entity.ApiKey;
+import com.gatekeeper.apikey.entity.ApiKeyStatus;
+import com.gatekeeper.apikey.repository.ApiKeyRepository;
 import com.gatekeeper.consumer.dto.ChangePlanRequest;
 import com.gatekeeper.consumer.dto.CreateConsumerRequest;
 import com.gatekeeper.consumer.entity.ApiConsumer;
@@ -49,6 +52,9 @@ class ConsumerControllerTest {
 
     @Autowired
     private ApiConsumerRepository consumerRepository;
+
+    @Autowired
+    private ApiKeyRepository apiKeyRepository;
 
     @Autowired
     private SubscriptionPlanRepository planRepository;
@@ -229,19 +235,73 @@ class ConsumerControllerTest {
     }
 
     @Test
-    @DisplayName("DELETE /api/v1/consumers/{consumerId} performs soft delete and subsequent lookup returns 404")
+    @DisplayName("DELETE /api/v1/consumers/{consumerId} performs soft delete, invalidates API keys, and subsequent lookup returns 404")
     void testSoftDeleteConsumer() throws Exception {
         ApiConsumer consumer = consumerRepository.saveAndFlush(new ApiConsumer("Delete Corp", "delete@test.local", freePlan));
+        ApiKey key1 = apiKeyRepository.saveAndFlush(new ApiKey(consumer, "Key 1", "gk_live_1111222233334444", "digest1"));
+        ApiKey key2 = apiKeyRepository.saveAndFlush(new ApiKey(consumer, "Key 2", "gk_live_5555666677778888", "digest2"));
 
         // Delete
         mockMvc.perform(delete("/api/v1/consumers/{consumerId}", consumer.getId())
                 .header("Authorization", "Bearer " + superAdminToken))
             .andExpect(status().isNoContent());
 
+        // Verify consumer in PostgreSQL
+        ApiConsumer deletedConsumer = consumerRepository.findById(consumer.getId()).orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(deletedConsumer.isDeleted()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(deletedConsumer.getStatus()).isEqualTo(com.gatekeeper.consumer.entity.ConsumerStatus.DEACTIVATED);
+        org.assertj.core.api.Assertions.assertThat(deletedConsumer.getDeletedAt()).isNotNull();
+
+        // Verify associated API keys in PostgreSQL
+        ApiKey key1After = apiKeyRepository.findById(key1.getId()).orElseThrow();
+        ApiKey key2After = apiKeyRepository.findById(key2.getId()).orElseThrow();
+        org.assertj.core.api.Assertions.assertThat(key1After.isDeleted()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(key1After.getStatus()).isEqualTo(ApiKeyStatus.DEACTIVATED);
+        org.assertj.core.api.Assertions.assertThat(key2After.isDeleted()).isTrue();
+        org.assertj.core.api.Assertions.assertThat(key2After.getStatus()).isEqualTo(ApiKeyStatus.DEACTIVATED);
+
         // Subsequent lookup must return 404
         mockMvc.perform(get("/api/v1/consumers/{consumerId}", consumer.getId())
                 .header("Authorization", "Bearer " + analystToken))
             .andExpect(status().isNotFound())
             .andExpect(jsonPath("$.status", is(404)));
+    }
+
+    @Test
+    @DisplayName("Repeated DELETE /api/v1/consumers/{consumerId} on already soft-deleted consumer returns 404")
+    void testRepeatedSoftDeleteReturns404() throws Exception {
+        ApiConsumer consumer = consumerRepository.saveAndFlush(new ApiConsumer("Repeat Delete Corp", "repeat_delete@test.local", freePlan));
+
+        // 1st delete succeeds with 204
+        mockMvc.perform(delete("/api/v1/consumers/{consumerId}", consumer.getId())
+                .header("Authorization", "Bearer " + superAdminToken))
+            .andExpect(status().isNoContent());
+
+        // 2nd delete on already deleted consumer must return 404
+        mockMvc.perform(delete("/api/v1/consumers/{consumerId}", consumer.getId())
+                .header("Authorization", "Bearer " + superAdminToken))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.status", is(404)));
+    }
+
+    @Test
+    @DisplayName("DELETE /api/v1/consumers/{consumerId} forbidden for ROLE_ANALYST (HTTP 403)")
+    void testSoftDeleteForbiddenForAnalyst() throws Exception {
+        ApiConsumer consumer = consumerRepository.saveAndFlush(new ApiConsumer("Auth Delete Corp", "auth_delete@test.local", freePlan));
+
+        mockMvc.perform(delete("/api/v1/consumers/{consumerId}", consumer.getId())
+                .header("Authorization", "Bearer " + analystToken))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.status", is(403)));
+    }
+
+    @Test
+    @DisplayName("DELETE /api/v1/consumers/{consumerId} unauthorized without token (HTTP 401)")
+    void testSoftDeleteUnauthorizedWithoutToken() throws Exception {
+        ApiConsumer consumer = consumerRepository.saveAndFlush(new ApiConsumer("Unauth Delete Corp", "unauth_delete@test.local", freePlan));
+
+        mockMvc.perform(delete("/api/v1/consumers/{consumerId}", consumer.getId()))
+            .andExpect(status().isUnauthorized())
+            .andExpect(jsonPath("$.status", is(401)));
     }
 }
