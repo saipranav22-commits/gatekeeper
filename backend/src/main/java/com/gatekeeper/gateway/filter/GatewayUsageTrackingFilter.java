@@ -165,6 +165,20 @@ public class GatewayUsageTrackingFilter extends OncePerRequestFilter {
             userAgent = userAgent.substring(0, 255);
         }
 
+        String circuitState = (String) request.getAttribute("GATEKEEPER_CIRCUIT_STATE");
+        if (circuitState == null || circuitState.isBlank()) circuitState = "CLOSED";
+
+        Integer retryCount = (Integer) request.getAttribute("GATEKEEPER_RETRY_COUNT");
+        if (retryCount == null) retryCount = 0;
+
+        Boolean bulkheadRejected = (Boolean) request.getAttribute("GATEKEEPER_BULKHEAD_REJECTED");
+        if (bulkheadRejected == null) bulkheadRejected = false;
+
+        String resilienceRejection = (String) request.getAttribute("GATEKEEPER_RESILIENCE_REJECTION");
+        if (resilienceRejection != null && !resilienceRejection.isBlank()) {
+            rejectionReason = resilienceRejection;
+        }
+
         UsageEventRecord event = new UsageEventRecord(
             UUID.randomUUID(),
             Instant.now(),
@@ -185,7 +199,10 @@ public class GatewayUsageTrackingFilter extends OncePerRequestFilter {
             userAgent,
             routeId,
             upstreamStatus,
-            upstreamLatencyMs
+            upstreamLatencyMs,
+            circuitState,
+            retryCount,
+            bulkheadRejected
         );
 
         usageEventPublisher.publishAsync(event);

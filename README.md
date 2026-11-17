@@ -1114,30 +1114,119 @@ Telemetry events are asynchronously published via Redis Streams and ingested int
 
 ---
 
-### 4. Live Verification & Benchmarks
+## Phase 5B: Production-Grade Gateway Resilience Engine
 
-#### Live Verification Script (`verify-real-api-routing.ps1`)
-A PowerShell 5.1-compatible verification script tests all 19 real API routing scenarios against live services:
-- Automatically detects and launches upstream Orders (`8081`) and Inventory (`8082`) services.
-- Authenticates administrator and provisions dedicated test consumers and scoped API keys.
-- Validates GET/POST proxying, path parameters, query parameters, method restrictions, and scope gates.
-- Tests unauthenticated (401), invalid key (401), unknown route (404), and path traversal (400) rejections.
-- Verifies asynchronous routing telemetry ingestion and executes cleanup.
+Gatekeeper includes an integrated, zero-external-dependency resilience engine designed to shield upstream microservices from cascading failures, sudden load spikes, and slow service degradation.
 
-```powershell
-.\verify-real-api-routing.ps1
+### 1. Resilience Architecture & Request Flow
+
+```mermaid
+flowchart TD
+    Client["Client Request"] --> Auth["Consumer Auth & Scope Gate"]
+    Auth --> Quota["Atomic Redis Token Bucket Rate Limiter"]
+    Quota --> ResEngine["Route Resilience Engine"]
+    
+    subgraph Resilience["Resilience Engine Pipeline"]
+        CBCheck{"1. Circuit Breaker<br/>State Check"}
+        CBCheck -- "OPEN" --> Fast503["Immediate HTTP 503<br/>(CIRCUIT_OPEN &lt; 1ms)"]
+        CBCheck -- "CLOSED / HALF_OPEN" --> BHAcquire{"2. Bulkhead Permit<br/>tryAcquire()"}
+        
+        BHAcquire -- "Saturated" --> BH503["Immediate HTTP 503<br/>(BULKHEAD_REJECTED)"]
+        BHAcquire -- "Permit Acquired" --> RetryLoop["3. Safe Retry Loop<br/>(Deadline Budget)"]
+        
+        RetryLoop --> UpstreamCall["HTTP Dispatch to Upstream"]
+        UpstreamCall -- "Success / Client Error" --> RecordCB["Record Outcome<br/>in Sliding Window"]
+        UpstreamCall -- "502/503/Timeout" --> CanRetry{"Is Safe Method &amp;<br/>Attempts Left &amp;<br/>Within Deadline?"}
+        
+        CanRetry -- "Yes (GET/HEAD)" --> JitterWait["Exponential Backoff<br/>+ Full Jitter"]
+        JitterWait --> RetryLoop
+        CanRetry -- "No (POST or Limit)" --> RecordCB
+        
+        RecordCB --> ReleaseBH["Finally: Release<br/>Bulkhead Permit"]
+    end
+    
+    ReleaseBH --> Telemetry["Async Telemetry via Redis Streams<br/>(circuit_state, retry_count, bulkhead_rejected)"]
+    Telemetry --> ClientResp["Response to Client"]
 ```
 
-#### Latency Benchmarks
-Measure routing overhead and roundtrip latency across 50+ requests:
+---
+
+### 2. Core Resilience Components
+
+#### A. High-Performance Sliding Window Circuit Breaker (`com.gatekeeper.resilience.circuitbreaker`)
+- **State Machine**:
+  - `CLOSED`: Normal operation. Calls pass through; outcomes recorded in a fixed-size ring buffer (`SlidingWindow`).
+  - `OPEN`: When minimum evaluated calls reached and either failure rate or slow call rate meets the threshold. Fast-rejects all incoming traffic immediately with HTTP 503 without touching the network.
+  - `HALF_OPEN`: Automatically transitions from OPEN after `waitDurationInOpenStateMs`. Admits a strictly bounded number of probe test calls (`permittedNumberOfCallsInHalfOpenState`).
+  - `RECOVERY`: Transitions back to `CLOSED` upon consecutive successful probe calls; trips back to `OPEN` immediately on any probe failure.
+- **Process-Local Execution**: Lock-free atomic reference transitions and nano/millisecond clock decoupling for deterministic unit testing.
+
+#### B. Concurrency Bulkhead Isolation (`com.gatekeeper.resilience.bulkhead`)
+- **Resource Partitioning**: Uses per-route counting semaphores (`RouteBulkhead`) to bound in-flight upstream calls (default 50 concurrent calls per route).
+- **Fast Saturation Defense**: When concurrency limit is reached, excess requests are rejected immediately with HTTP 503 (`BULKHEAD_REJECTED`) instead of accumulating in unbounded queues that exhaust JVM memory.
+- **Permit Leak Prevention**: Permits are strictly released in a `finally` block regardless of upstream response or connection failure.
+
+#### C. Idempotency-Aware Safe Retry Engine (`com.gatekeeper.resilience.retry`)
+- **Strict Idempotency Guard**:
+  - `GET` and `HEAD` requests are safe to retry on transient failures (HTTP 502, 503, 504, `ConnectException`, `HttpTimeoutException`).
+  - `POST` and `PATCH` requests are **NEVER** retried automatically to prevent duplicate mutations or billing charges.
+- **Exponential Backoff with Full Jitter**:
+  $$\text{Delay} = \text{random}\left(\text{base} \times (1 - J),\, \text{base} \times (1 + J)\right) \quad \text{where } \text{base} = \text{initialBackoff} \times \text{multiplier}^{\text{attempt}-1}$$
+- **Cumulative Deadline Budget**: Aborts remaining retries if total elapsed time plus next backoff would exceed `maxCumulativeDeadlineMs` (default 5000ms).
+- **Zero Double-Billing**: Gateway retries occur within the original client request context without deducting additional Redis token bucket quota.
+
+---
+
+### 3. Asynchronous Resilience Telemetry (Flyway V7)
+
+Flyway migration `V7__add_resilience_telemetry_fields.sql` enriches the `usage_events` table:
+- `circuit_state VARCHAR(20) DEFAULT 'CLOSED'`: Breaker state during dispatch (`CLOSED`, `OPEN`, `HALF_OPEN`).
+- `retry_count INTEGER DEFAULT 0`: Number of retry attempts executed for the request.
+- `bulkhead_rejected BOOLEAN DEFAULT FALSE`: Flag indicating whether request was rejected due to concurrency saturation.
+- Index `idx_usage_events_circuit_state` on `usage_events(circuit_state)` for analytics filtering.
+
+---
+
+### 4. Administrative Resilience REST APIs
+
+Secured with `@PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'ANALYST')")`:
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/v1/resilience/routes` | Returns list of all routes with circuit breaker status, metrics, and bulkhead in-flight/rejected counts. |
+| `GET` | `/api/v1/resilience/routes/{routeId}` | Detailed resilience configuration and runtime sliding-window metrics for a specific route. |
+| `POST` | `/api/v1/resilience/routes/{routeId}/reset` | Manually resets a route's circuit breaker to `CLOSED` and clears sliding window metrics (`ADMIN` only). |
+
+---
+
+### 5. Upstream Controlled Fault Injection
+
+Orders Service (`8081`) and Inventory Service (`8082`) include in-memory fault simulation controllers:
+- `POST /fault/configure`: `{"delayMs": 1000, "statusCode": 503, "failureCount": 5}`
+- `POST /fault/reset`: Clears all active faults.
+- `GET /fault/status`: Queries current fault simulation configuration.
+
+---
+
+### 6. Live Verification & Benchmarks
+
+#### Live Verification Script (`verify-resilience-engine.ps1`)
+Runs 20 automated live checks against Gatekeeper and upstream microservices:
+- Validates circuit breaker tripping on sustained upstream errors.
+- Measures fast rejection latency in `OPEN` state.
+- Verifies transparent retry on idempotent `GET` and strict non-retry on `POST`.
+- Tests admin resilience status APIs and manual breaker reset.
+- Validates concurrency bulkhead capacity and permit restoration.
 
 ```powershell
-# PowerShell benchmark
-.\benchmark-routing.ps1 -ApiKey "gk_live_..." -Requests 50
-
-# Node.js benchmark
-node benchmark-routing.js "gk_live_..." http://localhost:8080 50
+.\verify-resilience-engine.ps1
 ```
+
+#### Fast Rejection Latency Benchmark (`benchmark-resilience.ps1`)
+```powershell
+.\benchmark-resilience.ps1 -ApiKey "gk_live_..." -Iterations 100
+```
+
 
 
 

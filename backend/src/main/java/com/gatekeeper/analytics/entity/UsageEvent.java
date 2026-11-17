@@ -85,6 +85,15 @@ public class UsageEvent {
     @Column(name = "upstream_latency_ms")
     private Integer upstreamLatencyMs;
 
+    @Column(name = "circuit_state", length = 20)
+    private String circuitState = "CLOSED";
+
+    @Column(name = "retry_count")
+    private Integer retryCount = 0;
+
+    @Column(name = "bulkhead_rejected")
+    private Boolean bulkheadRejected = false;
+
     public UsageEvent() {
     }
 
@@ -286,6 +295,30 @@ public class UsageEvent {
 
     public void setUpstreamLatencyMs(Integer upstreamLatencyMs) {
         this.upstreamLatencyMs = upstreamLatencyMs;
+    }
+
+    public String getCircuitState() {
+        return circuitState;
+    }
+
+    public void setCircuitState(String circuitState) {
+        this.circuitState = circuitState;
+    }
+
+    public Integer getRetryCount() {
+        return retryCount;
+    }
+
+    public void setRetryCount(Integer retryCount) {
+        this.retryCount = retryCount;
+    }
+
+    public Boolean getBulkheadRejected() {
+        return bulkheadRejected;
+    }
+
+    public void setBulkheadRejected(Boolean bulkheadRejected) {
+        this.bulkheadRejected = bulkheadRejected;
     }
 
     @Override

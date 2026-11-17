@@ -2,6 +2,7 @@ package com.gatekeeper.routing.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gatekeeper.common.response.ErrorResponse;
+import com.gatekeeper.resilience.engine.RouteResilienceEngine;
 import com.gatekeeper.routing.model.GatewayRoute;
 import com.gatekeeper.routing.model.RouteMatchResult;
 import com.gatekeeper.routing.proxy.HttpProxyEngine;
@@ -10,6 +11,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -21,7 +23,7 @@ import java.util.Optional;
 
 /**
  * Entry controller for external API proxy requests (/api/v1/proxy/**).
- * Delegates request execution to the HttpProxyEngine.
+ * Delegates request execution through the RouteResilienceEngine and HttpProxyEngine.
  */
 @RestController
 @RequestMapping("/api/v1/proxy")
@@ -31,16 +33,28 @@ public class GatewayProxyController {
 
     private final GatewayRouteRegistry routeRegistry;
     private final HttpProxyEngine httpProxyEngine;
+    private final RouteResilienceEngine resilienceEngine;
     private final ObjectMapper objectMapper;
+
+    @Autowired
+    public GatewayProxyController(
+        GatewayRouteRegistry routeRegistry,
+        HttpProxyEngine httpProxyEngine,
+        @Autowired(required = false) RouteResilienceEngine resilienceEngine,
+        ObjectMapper objectMapper
+    ) {
+        this.routeRegistry = routeRegistry;
+        this.httpProxyEngine = httpProxyEngine;
+        this.resilienceEngine = resilienceEngine;
+        this.objectMapper = objectMapper;
+    }
 
     public GatewayProxyController(
         GatewayRouteRegistry routeRegistry,
         HttpProxyEngine httpProxyEngine,
         ObjectMapper objectMapper
     ) {
-        this.routeRegistry = routeRegistry;
-        this.httpProxyEngine = httpProxyEngine;
-        this.objectMapper = objectMapper;
+        this(routeRegistry, httpProxyEngine, null, objectMapper);
     }
 
     @RequestMapping("/**")
@@ -58,7 +72,11 @@ public class GatewayProxyController {
             targetPath = matchResult.get().targetPath();
         }
 
-        httpProxyEngine.forward(request, response, route, targetPath);
+        if (resilienceEngine != null) {
+            resilienceEngine.execute(request, response, route, targetPath);
+        } else {
+            httpProxyEngine.forward(request, response, route, targetPath);
+        }
     }
 
     private void sendError(

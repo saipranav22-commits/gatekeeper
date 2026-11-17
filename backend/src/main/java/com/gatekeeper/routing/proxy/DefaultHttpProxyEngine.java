@@ -9,6 +9,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -59,7 +60,7 @@ public class DefaultHttpProxyEngine implements HttpProxyEngine {
     private final SsrfProtectionValidator ssrfProtectionValidator;
     private final ObjectMapper objectMapper;
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     public DefaultHttpProxyEngine(
         SsrfProtectionValidator ssrfProtectionValidator,
         ObjectMapper objectMapper
@@ -85,48 +86,22 @@ public class DefaultHttpProxyEngine implements HttpProxyEngine {
     }
 
     @Override
-    public void forward(
+    public UpstreamResponse dispatchAttempt(
         HttpServletRequest request,
-        HttpServletResponse response,
         GatewayRoute route,
-        String targetPath
-    ) throws IOException {
+        String targetPath,
+        Duration timeout
+    ) throws Exception {
 
         // 1. Build and validate target URI
-        String baseUriStr = route.upstreamBaseUri().toString();
-        if (baseUriStr.endsWith("/")) {
-            baseUriStr = baseUriStr.substring(0, baseUriStr.length() - 1);
-        }
-
-        String fullPath = targetPath.startsWith("/") ? targetPath : "/" + targetPath;
-        String fullUriStr = baseUriStr + fullPath;
-        String queryString = request.getQueryString();
-        if (queryString != null && !queryString.isBlank()) {
-            fullUriStr += "?" + queryString;
-        }
-
-        URI targetUri;
-        try {
-            targetUri = URI.create(fullUriStr);
-            ssrfProtectionValidator.validateUpstreamUri(targetUri);
-        } catch (SecurityException ex) {
-            log.error("SSRF security violation for route '{}': {}", route.routeId(), ex.getMessage());
-            sendError(response, request, HttpStatus.FORBIDDEN, "Access to upstream target forbidden: " + ex.getMessage());
-            return;
-        } catch (Exception ex) {
-            log.error("Malformed target URI '{}' for route '{}': {}", fullUriStr, route.routeId(), ex.getMessage());
-            sendError(response, request, HttpStatus.BAD_REQUEST, "Malformed target URI: " + ex.getMessage());
-            return;
-        }
+        URI targetUri = buildAndValidateTargetUri(request, route, targetPath);
 
         // 2. Validate payload length if known
         long contentLength = request.getContentLengthLong();
         if (contentLength > route.maxBodySizeBytes()) {
             log.warn("Request body size {} exceeds limit {} on route '{}'",
                 contentLength, route.maxBodySizeBytes(), route.routeId());
-            sendError(response, request, HttpStatus.PAYLOAD_TOO_LARGE,
-                "Request payload exceeds maximum allowed size of " + route.maxBodySizeBytes() + " bytes");
-            return;
+            throw new PayloadTooLargeException("Request payload exceeds maximum allowed size of " + route.maxBodySizeBytes() + " bytes");
         }
 
         // 3. Prepare body publisher
@@ -135,13 +110,15 @@ public class DefaultHttpProxyEngine implements HttpProxyEngine {
         boolean hasBodyMethod = "POST".equals(method) || "PUT".equals(method) || "PATCH".equals(method);
 
         if (hasBodyMethod) {
-            byte[] bodyBytes = request.getInputStream().readNBytes((int) route.maxBodySizeBytes() + 1);
-            if (bodyBytes.length > route.maxBodySizeBytes()) {
-                log.warn("Streamed request body exceeded limit {} on route '{}'",
-                    route.maxBodySizeBytes(), route.routeId());
-                sendError(response, request, HttpStatus.PAYLOAD_TOO_LARGE,
-                    "Request payload exceeds maximum allowed size of " + route.maxBodySizeBytes() + " bytes");
-                return;
+            byte[] bodyBytes = (byte[]) request.getAttribute("GATEKEEPER_CACHED_BODY");
+            if (bodyBytes == null) {
+                bodyBytes = request.getInputStream().readNBytes((int) route.maxBodySizeBytes() + 1);
+                if (bodyBytes.length > route.maxBodySizeBytes()) {
+                    log.warn("Streamed request body exceeded limit {} on route '{}'",
+                        route.maxBodySizeBytes(), route.routeId());
+                    throw new PayloadTooLargeException("Request payload exceeds maximum allowed size of " + route.maxBodySizeBytes() + " bytes");
+                }
+                request.setAttribute("GATEKEEPER_CACHED_BODY", bodyBytes);
             }
             bodyPublisher = HttpRequest.BodyPublishers.ofByteArray(bodyBytes);
         } else {
@@ -152,7 +129,7 @@ public class DefaultHttpProxyEngine implements HttpProxyEngine {
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
             .uri(targetUri)
             .method(method, bodyPublisher)
-            .timeout(Duration.ofMillis(route.timeoutMs()));
+            .timeout(timeout != null ? timeout : Duration.ofMillis(route.timeoutMs()));
 
         Enumeration<String> headerNames = request.getHeaderNames();
         if (headerNames != null) {
@@ -164,7 +141,7 @@ public class DefaultHttpProxyEngine implements HttpProxyEngine {
                     || SENSITIVE_HEADERS.contains(lower)
                     || lower.startsWith("x-admin-")
                     || lower.equals("content-length")) {
-                    continue; // Skip hop-by-hop and sensitive headers
+                    continue;
                 }
 
                 Enumeration<String> values = request.getHeaders(name);
@@ -173,7 +150,7 @@ public class DefaultHttpProxyEngine implements HttpProxyEngine {
                     try {
                         requestBuilder.header(name, val);
                     } catch (IllegalArgumentException iae) {
-                        // Restricted or restricted by Java HttpClient
+                        // Restricted by Java HttpClient
                     }
                 }
             }
@@ -198,54 +175,28 @@ public class DefaultHttpProxyEngine implements HttpProxyEngine {
 
         // 5. Dispatch request to upstream service
         long startNanos = System.nanoTime();
-        HttpResponse<InputStream> upstreamResponse;
+        HttpResponse<InputStream> rawResponse = httpClient.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofInputStream());
+        long latencyMs = (System.nanoTime() - startNanos) / 1_000_000;
 
-        try {
-            upstreamResponse = httpClient.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofInputStream());
-        } catch (HttpTimeoutException ex) {
-            long latencyMs = (System.nanoTime() - startNanos) / 1_000_000;
-            request.setAttribute("GATEKEEPER_UPSTREAM_LATENCY_MS", (int) Math.max(1, latencyMs));
-            request.setAttribute("GATEKEEPER_UPSTREAM_STATUS", 504);
-            request.setAttribute("GATEKEEPER_ROUTE_ID", route.routeId());
-            log.error("Upstream timeout on route '{}' (limit {} ms): {}", route.routeId(), route.timeoutMs(), ex.getMessage());
-            sendError(response, request, HttpStatus.GATEWAY_TIMEOUT,
-                "Gateway Timeout: upstream service failed to respond within " + route.timeoutMs() + "ms");
-            return;
-        } catch (ConnectException ex) {
-            long latencyMs = (System.nanoTime() - startNanos) / 1_000_000;
-            request.setAttribute("GATEKEEPER_UPSTREAM_LATENCY_MS", (int) Math.max(1, latencyMs));
-            request.setAttribute("GATEKEEPER_UPSTREAM_STATUS", 502);
-            request.setAttribute("GATEKEEPER_ROUTE_ID", route.routeId());
-            log.error("Upstream connection refused on route '{}' at {}: {}",
-                route.routeId(), route.upstreamBaseUri(), ex.getMessage());
-            sendError(response, request, HttpStatus.BAD_GATEWAY,
-                "Bad Gateway: unable to connect to upstream service at " + route.upstreamBaseUri());
-            return;
-        } catch (IOException ex) {
-            long latencyMs = (System.nanoTime() - startNanos) / 1_000_000;
-            request.setAttribute("GATEKEEPER_UPSTREAM_LATENCY_MS", (int) Math.max(1, latencyMs));
-            request.setAttribute("GATEKEEPER_UPSTREAM_STATUS", 502);
-            request.setAttribute("GATEKEEPER_ROUTE_ID", route.routeId());
-            log.error("Upstream I/O error on route '{}': {}", route.routeId(), ex.getMessage());
-            sendError(response, request, HttpStatus.BAD_GATEWAY,
-                "Bad Gateway: error communicating with upstream service");
-            return;
-        } catch (InterruptedException ex) {
-            Thread.currentThread().interrupt();
-            sendError(response, request, HttpStatus.BAD_GATEWAY, "Gateway request interrupted");
-            return;
+        byte[] responseBody;
+        try (InputStream is = rawResponse.body()) {
+            responseBody = (is != null) ? is.readAllBytes() : new byte[0];
         }
 
-        // 6. Record upstream metrics
-        long latencyMs = (System.nanoTime() - startNanos) / 1_000_000;
-        int status = upstreamResponse.statusCode();
+        return new UpstreamResponse(
+            rawResponse.statusCode(),
+            rawResponse.headers(),
+            responseBody,
+            Math.max(1, latencyMs)
+        );
+    }
 
-        request.setAttribute("GATEKEEPER_UPSTREAM_STATUS", status);
-        request.setAttribute("GATEKEEPER_UPSTREAM_LATENCY_MS", (int) Math.max(1, latencyMs));
-        request.setAttribute("GATEKEEPER_ROUTE_ID", route.routeId());
-
-        // 7. Stream upstream response to downstream client
-        response.setStatus(status);
+    @Override
+    public void writeUpstreamResponse(
+        HttpServletResponse response,
+        UpstreamResponse upstreamResponse
+    ) throws IOException {
+        response.setStatus(upstreamResponse.statusCode());
 
         upstreamResponse.headers().map().forEach((headerName, headerValues) -> {
             String lower = headerName.toLowerCase(Locale.ROOT);
@@ -256,23 +207,73 @@ public class DefaultHttpProxyEngine implements HttpProxyEngine {
             }
         });
 
-        try (InputStream is = upstreamResponse.body();
-             OutputStream os = response.getOutputStream()) {
-            is.transferTo(os);
-            os.flush();
+        if (upstreamResponse.body() != null && upstreamResponse.body().length > 0) {
+            try (OutputStream os = response.getOutputStream()) {
+                os.write(upstreamResponse.body());
+                os.flush();
+            }
         }
     }
 
-    private String extractClientIp(HttpServletRequest request) {
-        String xff = request.getHeader("X-Forwarded-For");
-        if (xff != null && !xff.isBlank()) {
-            String[] parts = xff.split(",");
-            return parts[0].trim();
+    @Override
+    public void forward(
+        HttpServletRequest request,
+        HttpServletResponse response,
+        GatewayRoute route,
+        String targetPath
+    ) throws IOException {
+        long startNanos = System.nanoTime();
+        try {
+            UpstreamResponse upstreamResponse = dispatchAttempt(
+                request,
+                route,
+                targetPath,
+                Duration.ofMillis(route.timeoutMs())
+            );
+
+            request.setAttribute("GATEKEEPER_UPSTREAM_STATUS", upstreamResponse.statusCode());
+            request.setAttribute("GATEKEEPER_UPSTREAM_LATENCY_MS", (int) upstreamResponse.latencyMs());
+            request.setAttribute("GATEKEEPER_ROUTE_ID", route.routeId());
+
+            writeUpstreamResponse(response, upstreamResponse);
+
+        } catch (PayloadTooLargeException ex) {
+            sendError(response, request, HttpStatus.PAYLOAD_TOO_LARGE, ex.getMessage());
+        } catch (SecurityException ex) {
+            log.error("SSRF security violation for route '{}': {}", route.routeId(), ex.getMessage());
+            sendError(response, request, HttpStatus.FORBIDDEN, "Access to upstream target forbidden: " + ex.getMessage());
+        } catch (HttpTimeoutException ex) {
+            long latencyMs = (System.nanoTime() - startNanos) / 1_000_000;
+            request.setAttribute("GATEKEEPER_UPSTREAM_LATENCY_MS", (int) Math.max(1, latencyMs));
+            request.setAttribute("GATEKEEPER_UPSTREAM_STATUS", 504);
+            request.setAttribute("GATEKEEPER_ROUTE_ID", route.routeId());
+            sendError(response, request, HttpStatus.GATEWAY_TIMEOUT,
+                "Gateway Timeout: upstream service failed to respond within " + route.timeoutMs() + "ms");
+        } catch (ConnectException ex) {
+            long latencyMs = (System.nanoTime() - startNanos) / 1_000_000;
+            request.setAttribute("GATEKEEPER_UPSTREAM_LATENCY_MS", (int) Math.max(1, latencyMs));
+            request.setAttribute("GATEKEEPER_UPSTREAM_STATUS", 502);
+            request.setAttribute("GATEKEEPER_ROUTE_ID", route.routeId());
+            sendError(response, request, HttpStatus.BAD_GATEWAY,
+                "Bad Gateway: unable to connect to upstream service at " + route.upstreamBaseUri());
+        } catch (IOException ex) {
+            long latencyMs = (System.nanoTime() - startNanos) / 1_000_000;
+            request.setAttribute("GATEKEEPER_UPSTREAM_LATENCY_MS", (int) Math.max(1, latencyMs));
+            request.setAttribute("GATEKEEPER_UPSTREAM_STATUS", 502);
+            request.setAttribute("GATEKEEPER_ROUTE_ID", route.routeId());
+            sendError(response, request, HttpStatus.BAD_GATEWAY,
+                "Bad Gateway: error communicating with upstream service");
+        } catch (Exception ex) {
+            long latencyMs = (System.nanoTime() - startNanos) / 1_000_000;
+            request.setAttribute("GATEKEEPER_UPSTREAM_LATENCY_MS", (int) Math.max(1, latencyMs));
+            request.setAttribute("GATEKEEPER_UPSTREAM_STATUS", 502);
+            request.setAttribute("GATEKEEPER_ROUTE_ID", route.routeId());
+            sendError(response, request, HttpStatus.BAD_GATEWAY, "Gateway error: " + ex.getMessage());
         }
-        return request.getRemoteAddr();
     }
 
-    private void sendError(
+    @Override
+    public void sendError(
         HttpServletResponse response,
         HttpServletRequest request,
         HttpStatus status,
@@ -292,5 +293,38 @@ public class DefaultHttpProxyEngine implements HttpProxyEngine {
         );
         response.getWriter().write(objectMapper.writeValueAsString(errorResponse));
         response.getWriter().flush();
+    }
+
+    private URI buildAndValidateTargetUri(HttpServletRequest request, GatewayRoute route, String targetPath) {
+        String baseUriStr = route.upstreamBaseUri().toString();
+        if (baseUriStr.endsWith("/")) {
+            baseUriStr = baseUriStr.substring(0, baseUriStr.length() - 1);
+        }
+
+        String fullPath = targetPath.startsWith("/") ? targetPath : "/" + targetPath;
+        String fullUriStr = baseUriStr + fullPath;
+        String queryString = request.getQueryString();
+        if (queryString != null && !queryString.isBlank()) {
+            fullUriStr += "?" + queryString;
+        }
+
+        URI targetUri = URI.create(fullUriStr);
+        ssrfProtectionValidator.validateUpstreamUri(targetUri);
+        return targetUri;
+    }
+
+    private String extractClientIp(HttpServletRequest request) {
+        String xff = request.getHeader("X-Forwarded-For");
+        if (xff != null && !xff.isBlank()) {
+            String[] parts = xff.split(",");
+            return parts[0].trim();
+        }
+        return request.getRemoteAddr();
+    }
+
+    public static class PayloadTooLargeException extends RuntimeException {
+        public PayloadTooLargeException(String message) {
+            super(message);
+        }
     }
 }

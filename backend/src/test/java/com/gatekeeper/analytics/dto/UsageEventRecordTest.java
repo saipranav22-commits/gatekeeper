@@ -94,6 +94,45 @@ class UsageEventRecordTest {
         assertThat(record.routeId()).isEqualTo("orders-service-route");
         assertThat(record.upstreamStatus()).isEqualTo(201);
         assertThat(record.upstreamLatencyMs()).isEqualTo(18);
+        assertThat(record.circuitState()).isEqualTo("CLOSED");
+        assertThat(record.retryCount()).isEqualTo(0);
+        assertThat(record.bulkheadRejected()).isFalse();
+    }
+
+    @Test
+    @DisplayName("UsageEventRecord retains resilience metrics fields")
+    void testUsageEventRecordWithResilienceFields() {
+        UUID eventId = UUID.randomUUID();
+        UsageEventRecord record = new UsageEventRecord(
+            eventId,
+            Instant.now(),
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            "test@example.com",
+            "gk_live_12345678",
+            "/api/v1/proxy/orders",
+            "GET",
+            503,
+            45,
+            false,
+            "CIRCUIT_OPEN",
+            OutcomeCategory.SERVICE_UNAVAILABLE,
+            "PRO",
+            "corr-11223",
+            "127.0.0.1",
+            "Gatekeeper-Client/1.0",
+            "orders-service-v1",
+            null,
+            null,
+            "OPEN",
+            2,
+            true
+        );
+
+        assertThat(record.circuitState()).isEqualTo("OPEN");
+        assertThat(record.retryCount()).isEqualTo(2);
+        assertThat(record.bulkheadRejected()).isTrue();
+        assertThat(record.rejectionReason()).isEqualTo("CIRCUIT_OPEN");
     }
 
     @Test
