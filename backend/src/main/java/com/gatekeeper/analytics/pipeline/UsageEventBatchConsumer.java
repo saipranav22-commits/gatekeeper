@@ -64,8 +64,9 @@ public class UsageEventBatchConsumer {
             latency_ms, rate_limited, rejection_reason, ip_address, user_agent,
             outcome_category, rate_limit_plan, correlation_id,
             route_id, upstream_status, upstream_latency_ms,
-            circuit_state, retry_count, bulkhead_rejected
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            circuit_state, retry_count, bulkhead_rejected,
+            policy_decision, matched_rule_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (id) DO NOTHING
         """;
 
@@ -368,6 +369,8 @@ public class UsageEventBatchConsumer {
                     ps.setString(21, ev.circuitState() != null ? ev.circuitState() : "CLOSED");
                     ps.setInt(22, ev.retryCount() != null ? ev.retryCount() : 0);
                     ps.setBoolean(23, ev.bulkheadRejected() != null ? ev.bulkheadRejected() : false);
+                    ps.setString(24, ev.policyDecision());
+                    ps.setString(25, ev.matchedRuleId());
                 });
 
                 // 2. Monotonic update of api_keys.last_used_at for existing keys

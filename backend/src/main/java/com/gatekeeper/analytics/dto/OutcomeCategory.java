@@ -20,6 +20,11 @@ public enum OutcomeCategory {
     SCOPE_DENIED,
 
     /**
+     * Request blocked by Gatekeeper fine-grained policy engine rule (HTTP 403).
+     */
+    POLICY_DENIED,
+
+    /**
      * Rate limiting infrastructure or downstream service failure (HTTP 503).
      */
     SERVICE_UNAVAILABLE,

@@ -14,7 +14,7 @@ import java.io.IOException;
 
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
-@Profile("!prod")
+@Profile({"local", "test", "dev", "default"})
 public class FaultInjectionFilter extends OncePerRequestFilter {
 
     private final FaultSimulationManager faultManager;

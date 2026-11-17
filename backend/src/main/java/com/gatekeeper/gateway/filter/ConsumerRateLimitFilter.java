@@ -3,6 +3,11 @@ package com.gatekeeper.gateway.filter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.gatekeeper.common.response.ErrorResponse;
 import com.gatekeeper.gateway.dto.ConsumerPrincipal;
+import com.gatekeeper.policy.engine.PolicyCacheManager;
+import com.gatekeeper.policy.engine.PolicyEvaluationEngine;
+import com.gatekeeper.policy.model.PolicyAction;
+import com.gatekeeper.policy.model.PolicyDecision;
+import com.gatekeeper.policy.model.PolicyEvaluationContext;
 import com.gatekeeper.ratelimit.dto.RateLimitDecision;
 import com.gatekeeper.ratelimit.exception.RateLimitUnavailableException;
 import com.gatekeeper.ratelimit.service.TokenBucketRateLimiter;
@@ -59,19 +64,32 @@ public class ConsumerRateLimitFilter extends OncePerRequestFilter {
     private final TokenBucketRateLimiter tokenBucketRateLimiter;
     private final ObjectMapper objectMapper;
     private final GatewayRouteRegistry routeRegistry;
+    private final PolicyCacheManager policyCacheManager;
+    private final PolicyEvaluationEngine policyEvaluationEngine;
 
     public ConsumerRateLimitFilter(TokenBucketRateLimiter tokenBucketRateLimiter, ObjectMapper objectMapper) {
-        this(tokenBucketRateLimiter, objectMapper, null);
+        this(tokenBucketRateLimiter, objectMapper, null, null, null);
+    }
+
+    public ConsumerRateLimitFilter(
+            TokenBucketRateLimiter tokenBucketRateLimiter,
+            ObjectMapper objectMapper,
+            GatewayRouteRegistry routeRegistry) {
+        this(tokenBucketRateLimiter, objectMapper, routeRegistry, null, null);
     }
 
     @Autowired
     public ConsumerRateLimitFilter(
             TokenBucketRateLimiter tokenBucketRateLimiter,
             ObjectMapper objectMapper,
-            @Autowired(required = false) GatewayRouteRegistry routeRegistry) {
+            @Autowired(required = false) GatewayRouteRegistry routeRegistry,
+            @Autowired(required = false) PolicyCacheManager policyCacheManager,
+            @Autowired(required = false) PolicyEvaluationEngine policyEvaluationEngine) {
         this.tokenBucketRateLimiter = Objects.requireNonNull(tokenBucketRateLimiter, "tokenBucketRateLimiter must not be null");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper must not be null");
         this.routeRegistry = routeRegistry;
+        this.policyCacheManager = policyCacheManager;
+        this.policyEvaluationEngine = policyEvaluationEngine;
     }
 
     @Override
@@ -163,7 +181,86 @@ public class ConsumerRateLimitFilter extends OncePerRequestFilter {
             return;
         }
 
-        // 2. Consume quota from atomic Redis Token Bucket
+        // 2. Fine-grained Policy Evaluation BEFORE quota consumption
+        if (policyCacheManager != null && policyEvaluationEngine != null) {
+            String routeId = (String) request.getAttribute("GATEKEEPER_ROUTE_ID");
+            if (routeId == null && uri.startsWith("/api/v1/gateway/")) {
+                routeId = uri.substring("/api/v1/gateway/".length());
+            }
+
+            PolicyEvaluationContext policyContext = new PolicyEvaluationContext(
+                routeId,
+                request.getMethod(),
+                request.getRemoteAddr(),
+                principal.consumerId(),
+                principal.plan() != null ? principal.plan().name() : null,
+                principal.scopes(),
+                java.time.Instant.now()
+            );
+
+            // Check route-specific policy first, then global 'default' policy
+            java.util.List<String> policyKeysToCheck = new java.util.ArrayList<>();
+            if (routeId != null) {
+                policyKeysToCheck.add(routeId);
+            }
+            policyKeysToCheck.add("default");
+
+            for (String pKey : policyKeysToCheck) {
+                java.util.Optional<PolicyCacheManager.ActivePolicySnapshot> snapshotOpt = policyCacheManager.getActivePolicy(pKey);
+                if (snapshotOpt.isPresent()) {
+                    PolicyCacheManager.ActivePolicySnapshot snapshot = snapshotOpt.get();
+                    if (!snapshot.activeRules().isEmpty()) {
+                        PolicyDecision decision = policyEvaluationEngine.evaluate(
+                            snapshot.policyKey(),
+                            snapshot.versionNumber(),
+                            snapshot.activeRules(),
+                            policyContext
+                        );
+
+                        // Execute shadow evaluation safely if configured
+                        if (!snapshot.shadowRules().isEmpty()) {
+                            try {
+                                PolicyDecision shadowDecision = policyEvaluationEngine.evaluate(
+                                    snapshot.policyKey(),
+                                    snapshot.shadowVersionNumber(),
+                                    snapshot.shadowRules(),
+                                    policyContext
+                                );
+                                if (decision.action() != shadowDecision.action()) {
+                                    log.info("Shadow policy mismatch for '{}' (v{} vs shadow v{}): authoritative={}, shadow={} (rule={})",
+                                        snapshot.policyKey(), snapshot.versionNumber(), snapshot.shadowVersionNumber(),
+                                        decision.action(), shadowDecision.action(), shadowDecision.matchedRuleId());
+                                }
+                            } catch (Exception ex) {
+                                log.warn("Shadow policy evaluation failed safely: {}", ex.getMessage());
+                            }
+                        }
+
+                        if (decision.action() == PolicyAction.DENY) {
+                            log.warn("Access denied by policy '{}' (rule '{}') on {}: {}",
+                                decision.policyKey(), decision.matchedRuleId(), uri, decision.safeReason());
+
+                            request.setAttribute("GATEKEEPER_POLICY_DECISION", "DENY");
+                            request.setAttribute("GATEKEEPER_POLICY_MATCHED_RULE", decision.matchedRuleId());
+                            request.setAttribute("GATEKEEPER_POLICY_REASON", decision.safeReason());
+                            request.setAttribute("GATEKEEPER_POLICY_KEY", decision.policyKey());
+                            request.setAttribute("GATEKEEPER_POLICY_VERSION", decision.policyVersion());
+
+                            sendError(response, request, HttpStatus.FORBIDDEN,
+                                "Access denied by gateway policy: " + decision.safeReason());
+                            return; // Return immediately WITHOUT consuming quota or calling upstream!
+                        } else {
+                            request.setAttribute("GATEKEEPER_POLICY_DECISION", "ALLOW_CONTINUE");
+                            request.setAttribute("GATEKEEPER_POLICY_MATCHED_RULE", decision.matchedRuleId());
+                            request.setAttribute("GATEKEEPER_POLICY_KEY", decision.policyKey());
+                            request.setAttribute("GATEKEEPER_POLICY_VERSION", decision.policyVersion());
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Consume quota from atomic Redis Token Bucket
         request.setAttribute(ALREADY_CONSUMED_ATTR, Boolean.TRUE);
 
         try {

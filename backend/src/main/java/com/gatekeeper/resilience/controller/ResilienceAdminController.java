@@ -137,21 +137,29 @@ public class ResilienceAdminController {
         return ResponseEntity.ok(detail);
     }
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ResilienceAdminController.class);
+
     @PostMapping("/routes/{routeId}/reset")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN')")
     @Operation(summary = "Reset circuit breaker for a route", description = "Manually resets the route's circuit breaker to CLOSED and clears sliding window metrics.")
-    public ResponseEntity<Map<String, Object>> resetRouteCircuitBreaker(@PathVariable String routeId) {
+    public ResponseEntity<Map<String, Object>> resetRouteCircuitBreaker(
+            @PathVariable String routeId,
+            org.springframework.security.core.Authentication auth) {
         if (routeRegistry.getRoute(routeId).isEmpty()) {
             return ResponseEntity.notFound().build();
         }
 
+        String actor = auth != null ? auth.getName() : "system";
         RouteCircuitBreaker cb = resilienceEngine.getCircuitBreaker(routeId);
         cb.reset();
+
+        log.warn("ADMIN AUDIT: Administrator '{}' manually reset circuit breaker for route '{}' to CLOSED", actor, routeId);
 
         return ResponseEntity.ok(Map.of(
             "routeId", routeId,
             "status", "RESET",
-            "circuitState", cb.getState().name()
+            "circuitState", cb.getState().name(),
+            "resetBy", actor
         ));
     }
 }

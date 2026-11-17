@@ -179,6 +179,16 @@ public class GatewayUsageTrackingFilter extends OncePerRequestFilter {
             rejectionReason = resilienceRejection;
         }
 
+        String policyDecision = (String) request.getAttribute("GATEKEEPER_POLICY_DECISION");
+        String matchedRuleId = (String) request.getAttribute("GATEKEEPER_POLICY_MATCHED_RULE");
+        String policyReason = (String) request.getAttribute("GATEKEEPER_POLICY_REASON");
+
+        if (status == 403 && "DENY".equalsIgnoreCase(policyDecision)) {
+            outcome = OutcomeCategory.POLICY_DENIED;
+            String reason = policyReason != null ? policyReason : "POLICY_RESTRICTION";
+            rejectionReason = reason.length() > 50 ? reason.substring(0, 50) : reason;
+        }
+
         UsageEventRecord event = new UsageEventRecord(
             UUID.randomUUID(),
             Instant.now(),
@@ -202,7 +212,9 @@ public class GatewayUsageTrackingFilter extends OncePerRequestFilter {
             upstreamLatencyMs,
             circuitState,
             retryCount,
-            bulkheadRejected
+            bulkheadRejected,
+            policyDecision,
+            matchedRuleId
         );
 
         usageEventPublisher.publishAsync(event);

@@ -25,4 +25,6 @@ public interface UsageEventRepository extends JpaRepository<UsageEvent, UUID> {
     List<UsageEvent> findByRateLimitedTrueAndTimestampBetween(Instant start, Instant end);
 
     List<UsageEvent> findByTimestampBetween(Instant start, Instant end);
+
+    Page<UsageEvent> findByTimestampBetweenOrderByTimestampDesc(Instant start, Instant end, Pageable pageable);
 }

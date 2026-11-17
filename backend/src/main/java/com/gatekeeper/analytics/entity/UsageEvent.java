@@ -94,6 +94,12 @@ public class UsageEvent {
     @Column(name = "bulkhead_rejected")
     private Boolean bulkheadRejected = false;
 
+    @Column(name = "policy_decision", length = 30)
+    private String policyDecision;
+
+    @Column(name = "matched_rule_id", length = 64)
+    private String matchedRuleId;
+
     public UsageEvent() {
     }
 
@@ -319,6 +325,22 @@ public class UsageEvent {
 
     public void setBulkheadRejected(Boolean bulkheadRejected) {
         this.bulkheadRejected = bulkheadRejected;
+    }
+
+    public String getPolicyDecision() {
+        return policyDecision;
+    }
+
+    public void setPolicyDecision(String policyDecision) {
+        this.policyDecision = policyDecision;
+    }
+
+    public String getMatchedRuleId() {
+        return matchedRuleId;
+    }
+
+    public void setMatchedRuleId(String matchedRuleId) {
+        this.matchedRuleId = matchedRuleId;
     }
 
     @Override

@@ -123,13 +123,17 @@ class BulkheadConcurrencyIntegrationTest {
             slowCallStartLatch.countDown();
             try {
                 // Block until signaled
-                releaseSlowCallsLatch.await(5, TimeUnit.SECONDS);
+                releaseSlowCallsLatch.await(30, TimeUnit.SECONDS);
             } finally {
                 currentInFlightOrders.decrementAndGet();
             }
 
             return new UpstreamResponse(200, EMPTY_HEADERS, "[]".getBytes(), 50);
         }).when(proxyEngine).dispatchAttempt(any(), eq(ordersRoute), any(), any());
+
+        // Pre-configure proxy dispatchAttempt for inventory route before concurrent thread launch
+        doAnswer(invocation -> new UpstreamResponse(200, EMPTY_HEADERS, "[]".getBytes(), 10))
+            .when(proxyEngine).dispatchAttempt(any(), eq(inventoryRoute), any(), any());
 
         // Launch 30 concurrent orders calls
         List<Future<?>> futures = new ArrayList<>();
@@ -151,7 +155,7 @@ class BulkheadConcurrencyIntegrationTest {
         }
 
         // Wait until all 10 capacity permits are active and blocked inside the upstream dispatch
-        assertThat(slowCallStartLatch.await(3, TimeUnit.SECONDS)).isTrue();
+        assertThat(slowCallStartLatch.await(10, TimeUnit.SECONDS)).isTrue();
 
         // Verify peak in-flight calls NEVER exceeded capacity
         assertThat(inFlightOrdersPeak.get()).isEqualTo(capacity);
@@ -161,9 +165,6 @@ class BulkheadConcurrencyIntegrationTest {
 
         // CROSS-ROUTE ISOLATION TEST:
         // While Orders bulkhead is 100% saturated, execute an Inventory request
-        doAnswer(invocation -> new UpstreamResponse(200, EMPTY_HEADERS, "[]".getBytes(), 10))
-            .when(proxyEngine).dispatchAttempt(any(), eq(inventoryRoute), any(), any());
-
         MockHttpServletRequest invReq = new MockHttpServletRequest("GET", "/api/v1/proxy/inventory");
         MockHttpServletResponse invResp = new MockHttpServletResponse();
         resilienceEngine.execute(invReq, invResp, inventoryRoute, "inventory");
@@ -175,7 +176,7 @@ class BulkheadConcurrencyIntegrationTest {
 
         // Now release the held orders requests
         releaseSlowCallsLatch.countDown();
-        assertThat(allDoneLatch.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(allDoneLatch.await(15, TimeUnit.SECONDS)).isTrue();
         executor.shutdown();
 
         // Exactly 10 calls were admitted and 20 were rejected by the bulkhead

@@ -1227,6 +1227,83 @@ Runs 20 automated live checks against Gatekeeper and upstream microservices:
 .\benchmark-resilience.ps1 -ApiKey "gk_live_..." -Iterations 100
 ```
 
+---
+
+## Phase 5C: Explainable, Versioned Gateway Policy Engine
+
+Phase 5C equips Gatekeeper with a deterministic, explainable, and versioned policy engine (`com.gatekeeper.policy`) operating directly on the gateway hot path before token-bucket rate limiting.
+
+### 1. Architectural Pipeline & Invariants
+
+```mermaid
+flowchart TD
+    ClientReq["Client HTTP Request"] --> RouteMatch["1. Route Match & Method Check"]
+    RouteMatch --> AuthCheck["2. Mandatory Consumer API Key Auth"]
+    AuthCheck --> ScopeCheck["3. Mandatory Scope Validation"]
+    ScopeCheck --> PolicyEngine["4. Fine-Grained Policy Engine (Cached In-Memory)"]
+    
+    PolicyEngine -->|DENY| PolicyReject["HTTP 403 Forbidden\n(Preserve Quota, Zero Upstream Dispatch)"]
+    PolicyReject --> TelemetryDenied["Log Outcome: POLICY_DENIED"]
+    
+    PolicyEngine -->|ALLOW_CONTINUE| TokenBucket["5. Distributed Redis Token Bucket"]
+    TokenBucket -->|429 Rate Limit| RateLimitReject["HTTP 429 Too Many Requests"]
+    TokenBucket --> Bulkhead["6. Concurrency Bulkhead Semaphore"]
+    Bulkhead --> CircuitBreaker["7. Circuit Breaker Check"]
+    CircuitBreaker --> UpstreamDispatch["8. HTTP Proxy Dispatch & Retry"]
+```
+
+#### Core Security Invariants:
+1. **Mandatory Security Separation**: Platform authentication and required scopes precede policy evaluation. A policy rule of `ALLOW_CONTINUE` **never** grants access to unauthenticated or unauthorized requests.
+2. **Quota Preservation on Denial**: When a policy rule evaluates to `DENY`, the gateway returns HTTP 403 Forbidden with a sanitized `safeReason`. The consumer's Redis Token Bucket is **not decremented**, preserving quota.
+3. **Deterministic Evaluation**: Rules evaluate strictly by `priority` ascending (1 before 10), with alphanumeric `ruleId` tie-breaking. Maximum 500 rules per version.
+4. **Historical Replay Non-Fabrication**: The replay engine strictly refuses to guess missing historical scopes and flags those events as `NOT_EVALUABLE` / `UNKNOWN`.
+5. **Multi-Instance Consistency**: Caching in `PolicyCacheManager` uses atomic reference swapping, with invalidations synchronized across instances via Redis channel `gatekeeper:policy:invalidation`.
+
+---
+
+### 2. Administrative REST APIs (`/api/v1/policies`)
+
+Secured by Spring Security RBAC (`ROLE_SUPER_ADMIN`, `ROLE_ADMIN` full access; `ROLE_ANALYST` read/simulate/replay; API consumers blocked):
+
+| Method | Endpoint | Description | Roles |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/v1/policies` | Create a new policy definition (`policyKey`, `name`, `description`). | ADMIN |
+| `GET` | `/api/v1/policies` | List all policy definitions with active/shadow version metadata. | ADMIN, ANALYST |
+| `GET` | `/api/v1/policies/{policyKey}` | Get policy definition details and active version rules. | ADMIN, ANALYST |
+| `POST` | `/api/v1/policies/{policyKey}/versions` | Create a new immutable policy version (DRAFT). | ADMIN |
+| `GET` | `/api/v1/policies/{policyKey}/versions` | List all versions and their lifecycle statuses. | ADMIN, ANALYST |
+| `POST` | `/api/v1/policies/{policyKey}/versions/{versionNumber}/activate` | Atomically activate a version and broadcast invalidation. | ADMIN |
+| `POST` | `/api/v1/policies/{policyKey}/rollback?targetVersion=N` | Rollback to target version, preserving audit trail. | ADMIN |
+| `POST` | `/api/v1/policies/{policyKey}/simulate` | Dry-run simulate a synthetic request (zero side-effects). | ADMIN, ANALYST |
+| `POST` | `/api/v1/policies/{policyKey}/replay` | Replay candidate version against historical `usage_events`. | ADMIN, ANALYST |
+| `POST` | `/api/v1/policies/{policyKey}/shadow` | Configure or clear shadow policy version. | ADMIN |
+| `GET` | `/api/v1/policies/{policyKey}/audits` | Query immutable audit log of all activations/rollbacks. | ADMIN, ANALYST |
+
+---
+
+### 3. Verification & Benchmarking Scripts
+
+#### Live Verification Script (`verify-policy-engine.ps1`)
+Runs 16 end-to-end checks against the live system:
+- Verifies backend and upstream microservices health.
+- Authenticates admin and provisions dedicated test consumer and scoped API key.
+- Creates policy definition, draft version 1 (DENY rule), and executes dry-run simulation.
+- Activates version 1 and verifies live HTTP 403 enforcement with quota preservation.
+- Verifies mandatory authentication and scope check invariants.
+- Creates and activates version 2 (ALLOW_CONTINUE) and verifies live upstream traffic.
+- Verifies immutable audit trail, executes transactional rollback, and tests RBAC isolation.
+
+```powershell
+.\verify-policy-engine.ps1
+```
+
+#### Policy Evaluation Performance Benchmark (`benchmark-policy-engine.ps1`)
+Measures in-memory engine evaluation latency across 10, 100, and 500 rules:
+```powershell
+.\benchmark-policy-engine.ps1 -Iterations 200
+```
+
+
 
 
 

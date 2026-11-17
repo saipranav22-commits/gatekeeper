@@ -184,9 +184,11 @@ class AnalyticsServiceIntegrationTest {
         Instant start = now.minus(2, ChronoUnit.HOURS);
         Instant end = now.plus(1, ChronoUnit.HOURS);
 
-        insertEvent(now.minus(10, ChronoUnit.MINUTES), 200, "ALLOWED", "/api/v1/gateway/demo", false);
+        for (int i = 0; i < 5; i++) {
+            insertEvent(now.minus(10, ChronoUnit.MINUTES), 200, "ALLOWED", "/api/v1/gateway/demo", false);
+        }
 
-        List<TopConsumerDto> top = analyticsService.getTopConsumers(start, end, 10);
+        List<TopConsumerDto> top = analyticsService.getTopConsumers(start, end, 50);
         assertThat(top).isNotEmpty();
 
         boolean found = top.stream().anyMatch(tc -> tc.consumerId().equals(testConsumer.getId()));
