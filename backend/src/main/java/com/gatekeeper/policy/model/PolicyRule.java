@@ -11,7 +11,7 @@ import java.util.Objects;
 public record PolicyRule(
     String ruleId,
     int priority,
-    boolean enabled,
+    Boolean enabled,
     PolicyRuleConditions conditions,
     PolicyAction action,
     String description,
@@ -22,6 +22,9 @@ public record PolicyRule(
     public PolicyRule {
         Objects.requireNonNull(ruleId, "ruleId must not be null");
         Objects.requireNonNull(action, "action must not be null");
+        if (enabled == null) {
+            enabled = Boolean.TRUE;
+        }
         if (conditions == null) {
             conditions = PolicyRuleConditions.empty();
         }

@@ -314,31 +314,38 @@ try {
     # 4. Verify or Create Policy Definition for Route
     # ------------------------------------------------------------------------------
     Write-Host "`n[4/16] Verifying Gateway Policy Definition for '$policyKey'..." -ForegroundColor Yellow
-    $defsResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies" -Method "Get" -Headers $adminHeaders
-    $existingDefs = @($defsResp.Body | ConvertFrom-Json)
-    $policyDef = $existingDefs | Where-Object { $_.policyKey -eq $policyKey } | Select-Object -First 1
+    $defResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies/$policyKey" -Method "Get" -Headers $adminHeaders
+    $policyDef = $null
 
-    if (-not $policyDef) {
+    if ($defResp.StatusCode -eq 200) {
+        $policyDef = $defResp.Body | ConvertFrom-Json
+    } elseif ($defResp.StatusCode -eq 404) {
         $policyDefReq = @{
             policyKey   = $policyKey
             name        = "Orders Service Policy"
             description = "Route policy for orders microservice"
         } | ConvertTo-Json -Compress
 
-        $defResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies" -Method "Post" -Headers $adminHeaders -Body $policyDefReq
-        if ($defResp.StatusCode -ne 201) {
-            Write-Host "  [FAIL] Failed to create policy definition (HTTP $($defResp.StatusCode)): $($defResp.Body)" -ForegroundColor Red
+        $createDefResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies" -Method "Post" -Headers $adminHeaders -Body $policyDefReq
+        if ($createDefResp.StatusCode -ne 201) {
+            Write-Host "  [FAIL] Failed to create policy definition (HTTP $($createDefResp.StatusCode)): $($createDefResp.Body)" -ForegroundColor Red
             exit 1
         }
-        $policyDef = $defResp.Body | ConvertFrom-Json
+        $policyDef = $createDefResp.Body | ConvertFrom-Json
+    } else {
+        Write-Host "  [FAIL] Failed to query policy definition (HTTP $($defResp.StatusCode)): $($defResp.Body)" -ForegroundColor Red
+        exit 1
     }
 
-    $activeVersionDisplay = 'none'
-    if ($null -ne $policyDef.activeVersionNumber) {
-        $activeVersionDisplay = [string]$policyDef.activeVersionNumber
-    } elseif ($null -ne $policyDef.activeVersion) {
-        $activeVersionDisplay = [string]$policyDef.activeVersion
+    $activeNum = $null
+    if ($null -ne $policyDef) {
+        if ($null -ne $policyDef.activeVersionNumber) {
+            $activeNum = @($policyDef.activeVersionNumber)[0]
+        } elseif ($null -ne $policyDef.activeVersion) {
+            $activeNum = @($policyDef.activeVersion)[0]
+        }
     }
+    $activeVersionDisplay = if ($null -ne $activeNum) { [string]$activeNum } else { 'none' }
     Write-Host "  [OK] Policy definition verified: key='$policyKey' (Active Version: $activeVersionDisplay)." -ForegroundColor Green
 
     # ------------------------------------------------------------------------------
@@ -351,6 +358,7 @@ try {
             @{
                 ruleId      = "deny-orders-write"
                 priority    = 10
+                enabled     = $true
                 description = "Block order creations during maintenance"
                 action      = "DENY"
                 reasonCode  = "MAINTENANCE_WINDOW"
@@ -482,6 +490,7 @@ try {
             @{
                 ruleId      = "allow-orders-traffic"
                 priority    = 10
+                enabled     = $true
                 description = "Allow valid consumer requests"
                 action      = "ALLOW_CONTINUE"
                 reasonCode  = "NORMAL_OPERATIONS"
@@ -528,7 +537,7 @@ try {
     # 14. Query Activation Audit Trail
     # ------------------------------------------------------------------------------
     Write-Host "`n[14/16] Querying Policy Activation Audit Trail..." -ForegroundColor Yellow
-    $auditsResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies/$policyKey/audits" -Method "Get" -Headers $adminHeaders
+    $auditsResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies/$policyKey/audit" -Method "Get" -Headers $adminHeaders
     if ($auditsResp.StatusCode -ne 200) {
         Write-Host "  [FAIL] Failed to retrieve audits: HTTP $($auditsResp.StatusCode)" -ForegroundColor Red
         exit 1
@@ -571,10 +580,19 @@ try {
     }
     Write-Host "  [OK] Consumer API key blocked from administrative policy APIs (HTTP $($unauthPolicyResp.StatusCode))." -ForegroundColor Green
 
+    # Restore operational ALLOW policy on shared orders route so gateway traffic is unblocked
+    if ($v2Num) {
+        $restoreResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies/$policyKey/versions/$v2Num/activate?reason=Post-verification+allow+restore" -Method "Post" -Headers $adminHeaders
+        if ($restoreResp.StatusCode -eq 200) {
+            Write-Host "  [OK] Operational state restored: Version $v2Num (ALLOW_CONTINUE) re-activated on '$policyKey'." -ForegroundColor Green
+        }
+    }
+
     # Clean up test consumer
     if ($createdConsumerId) {
         $delResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/consumers/$createdConsumerId" -Method "Delete" -Headers $adminHeaders
         Write-Host "  [OK] Test consumer cleaned up." -ForegroundColor Green
+        $createdConsumerId = $null
     }
 
     Write-Host "`n======================================================" -ForegroundColor Green
@@ -582,6 +600,14 @@ try {
     Write-Host "======================================================" -ForegroundColor Green
 
 } finally {
+    # Failure-path cleanup: delete temporary test consumer
+    if ($createdConsumerId) {
+        try {
+            Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/consumers/$createdConsumerId" -Method "Delete" -Headers $adminHeaders | Out-Null
+            Write-Host "  [CLEANUP] Test consumer cleaned up in finally block." -ForegroundColor Gray
+        } catch {}
+    }
+
     # Stop background services started by this script
     foreach ($proc in $servicesStarted) {
         try {

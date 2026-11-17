@@ -11,6 +11,7 @@ import com.gatekeeper.policy.dto.PolicySimulationResponse;
 import com.gatekeeper.policy.model.PolicyAction;
 import com.gatekeeper.policy.model.PolicyRule;
 import com.gatekeeper.policy.model.PolicyRuleConditions;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -41,6 +42,9 @@ class PolicySimulationAndReplayTest {
 
     @Autowired
     private UsageEventRepository usageEventRepository;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     private String testPolicyKey;
 
@@ -140,5 +144,107 @@ class PolicySimulationAndReplayTest {
         assertThat(resp.totalEligibleRecords()).isGreaterThanOrEqualTo(2);
         assertThat(resp.newlyDenied()).isGreaterThanOrEqualTo(1); // POST was newly denied
         assertThat(resp.decisionsUnchanged()).isGreaterThanOrEqualTo(1); // GET remained unchanged
+    }
+
+    @Test
+    @DisplayName("Candidate DRAFT version simulation matches DENY rule with omitted enabled field")
+    void candidateDraftVersionSimulationMatchesDenyRule() throws Exception {
+        // Create draft version via JSON where 'enabled' is omitted (defaulting to true)
+        String ruleJson = """
+            {
+                "ruleId": "deny-orders-write",
+                "priority": 10,
+                "action": "DENY",
+                "reasonCode": "MAINTENANCE_WINDOW",
+                "safeReason": "Order creation is temporarily paused for scheduled maintenance.",
+                "conditions": {
+                    "routeId": "orders-service-v1",
+                    "httpMethod": "POST"
+                }
+            }
+            """;
+        PolicyRule rule = objectMapper.readValue(ruleJson, PolicyRule.class);
+        assertThat(rule.enabled()).isTrue();
+
+        adminService.createVersion(testPolicyKey, new CreatePolicyVersionRequest("Draft v1", List.of(rule)), "admin");
+
+        // Verify version 1 is DRAFT, not ACTIVE
+        assertThat(adminService.getDefinition(testPolicyKey).activeVersionNumber()).isNull();
+
+        // Simulate against version 1 with matching route and method
+        PolicySimulationRequest matchReq = new PolicySimulationRequest(
+            1,
+            null,
+            "orders-service-v1",
+            "POST",
+            "PRO",
+            Set.of("gateway:invoke", "write:orders"),
+            "127.0.0.1",
+            Instant.now()
+        );
+
+        PolicySimulationResponse matchResp = simulationService.simulate(testPolicyKey, matchReq);
+        assertThat(matchResp.decision()).isEqualTo(PolicyAction.DENY);
+        assertThat(matchResp.matchedRuleId()).isEqualTo("deny-orders-write");
+        assertThat(matchResp.reasonCode()).isEqualTo("MAINTENANCE_WINDOW");
+        assertThat(matchResp.safeReason()).contains("scheduled maintenance");
+        assertThat(matchResp.hypotheticalQuotaConsumption()).isFalse();
+
+        // Simulate against version 1 with mismatched method (GET should ALLOW_CONTINUE)
+        PolicySimulationRequest mismatchReq = new PolicySimulationRequest(
+            1,
+            null,
+            "orders-service-v1",
+            "GET",
+            "PRO",
+            Set.of("gateway:invoke", "read:orders"),
+            "127.0.0.1",
+            Instant.now()
+        );
+
+        PolicySimulationResponse mismatchResp = simulationService.simulate(testPolicyKey, mismatchReq);
+        assertThat(mismatchResp.decision()).isEqualTo(PolicyAction.ALLOW_CONTINUE);
+        assertThat(mismatchResp.matchedRuleId()).isNull();
+        assertThat(mismatchResp.hypotheticalQuotaConsumption()).isTrue();
+
+        // Verify active policy in DB was NOT mutated
+        assertThat(adminService.getDefinition(testPolicyKey).activeVersionNumber()).isNull();
+    }
+
+    @Test
+    @DisplayName("Candidate version with explicitly disabled rule is skipped and defaults to ALLOW_CONTINUE")
+    void candidateVersionWithDisabledRuleSkipped() throws Exception {
+        String ruleJson = """
+            {
+                "ruleId": "disabled-deny",
+                "priority": 10,
+                "enabled": false,
+                "action": "DENY",
+                "reasonCode": "DISABLED_CODE",
+                "conditions": {
+                    "routeId": "orders-service-v1",
+                    "httpMethod": "POST"
+                }
+            }
+            """;
+        PolicyRule rule = objectMapper.readValue(ruleJson, PolicyRule.class);
+        assertThat(rule.enabled()).isFalse();
+
+        adminService.createVersion(testPolicyKey, new CreatePolicyVersionRequest("Draft disabled", List.of(rule)), "admin");
+
+        PolicySimulationRequest simReq = new PolicySimulationRequest(
+            1,
+            null,
+            "orders-service-v1",
+            "POST",
+            "PRO",
+            Set.of("write:orders"),
+            "127.0.0.1",
+            Instant.now()
+        );
+
+        PolicySimulationResponse simResp = simulationService.simulate(testPolicyKey, simReq);
+        assertThat(simResp.decision()).isEqualTo(PolicyAction.ALLOW_CONTINUE);
+        assertThat(simResp.matchedRuleId()).isNull();
     }
 }

@@ -66,7 +66,7 @@ public class DefaultPolicyEvaluationEngine implements PolicyEvaluationEngine {
         List<RuleEvaluationTrace> traces = new ArrayList<>(candidateCount);
 
         for (PolicyRule rule : sortedRules) {
-            if (!rule.enabled()) {
+            if (rule.enabled() != null && !rule.enabled()) {
                 traces.add(RuleEvaluationTrace.nonMatched(rule, "Rule is disabled"));
                 continue;
             }

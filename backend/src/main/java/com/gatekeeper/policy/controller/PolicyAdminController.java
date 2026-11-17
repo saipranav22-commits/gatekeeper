@@ -154,7 +154,7 @@ public class PolicyAdminController {
         return ResponseEntity.ok(replayService.replay(policyKey, request));
     }
 
-    @GetMapping("/{policyKey}/audit")
+    @GetMapping({ "/{policyKey}/audit", "/{policyKey}/audits" })
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN', 'ANALYST')")
     @Operation(summary = "Get policy activation audit trail", description = "Returns chronological activation and rollback audit history.")
     public ResponseEntity<List<PolicyActivationAuditDto>> getAuditHistory(@PathVariable String policyKey) {

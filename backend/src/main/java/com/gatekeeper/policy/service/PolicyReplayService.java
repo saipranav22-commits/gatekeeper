@@ -213,7 +213,7 @@ public class PolicyReplayService {
     private boolean checkScopeDependency(List<PolicyRule> rules) {
         if (rules == null) return false;
         for (PolicyRule r : rules) {
-            if (r.enabled() && r.conditions() != null) {
+            if (Boolean.TRUE.equals(r.enabled()) && r.conditions() != null) {
                 if (r.conditions().requiredScopes() != null && !r.conditions().requiredScopes().isEmpty()) {
                     return true;
                 }
