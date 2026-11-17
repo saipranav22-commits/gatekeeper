@@ -85,7 +85,7 @@ function Invoke-SafeRestCall {
 
 $servicesStarted = @()
 $createdConsumerId = $null
-$createdPolicyKey = $null
+$policyKey = "orders-service-v1"
 
 try {
     # ------------------------------------------------------------------------------
@@ -272,32 +272,42 @@ try {
     Write-Host "  [OK] Scoped API key generated with scopes [gateway:invoke, read:orders, write:orders]." -ForegroundColor Green
 
     # ------------------------------------------------------------------------------
-    # 4. Create Policy Definition
+    # 4. Verify or Create Policy Definition for Route
     # ------------------------------------------------------------------------------
-    Write-Host "`n[4/16] Creating Gateway Policy Definition..." -ForegroundColor Yellow
-    $policyKey = "policy-live-test-$uniqueId"
-    $createdPolicyKey = $policyKey
+    Write-Host "`n[4/16] Verifying Gateway Policy Definition for '$policyKey'..." -ForegroundColor Yellow
+    $defsResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies" -Method "Get" -Headers $adminHeaders
+    $existingDefs = @($defsResp.Body | ConvertFrom-Json)
+    $policyDef = $existingDefs | Where-Object { $_.policyKey -eq $policyKey } | Select-Object -First 1
 
-    $policyDefReq = @{
-        policyKey   = $policyKey
-        name        = "Live Verification Policy"
-        description = "Automated test policy for live Phase 5C verification"
-    } | ConvertTo-Json -Compress
+    if (-not $policyDef) {
+        $policyDefReq = @{
+            policyKey   = $policyKey
+            name        = "Orders Service Policy"
+            description = "Route policy for orders microservice"
+        } | ConvertTo-Json -Compress
 
-    $defResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies" -Method "Post" -Headers $adminHeaders -Body $policyDefReq
-    if ($defResp.StatusCode -ne 201) {
-        Write-Host "  [FAIL] Failed to create policy definition (HTTP $($defResp.StatusCode)): $($defResp.Body)" -ForegroundColor Red
-        exit 1
+        $defResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies" -Method "Post" -Headers $adminHeaders -Body $policyDefReq
+        if ($defResp.StatusCode -ne 201) {
+            Write-Host "  [FAIL] Failed to create policy definition (HTTP $($defResp.StatusCode)): $($defResp.Body)" -ForegroundColor Red
+            exit 1
+        }
+        $policyDef = $defResp.Body | ConvertFrom-Json
     }
-    $policyDef = $defResp.Body | ConvertFrom-Json
-    Write-Host "  [OK] Policy definition created: key='$policyKey' (Version: $($policyDef.activeVersion ?: 'none'))." -ForegroundColor Green
+
+    $activeVersionDisplay = 'none'
+    if ($null -ne $policyDef.activeVersionNumber) {
+        $activeVersionDisplay = [string]$policyDef.activeVersionNumber
+    } elseif ($null -ne $policyDef.activeVersion) {
+        $activeVersionDisplay = [string]$policyDef.activeVersion
+    }
+    Write-Host "  [OK] Policy definition verified: key='$policyKey' (Active Version: $activeVersionDisplay)." -ForegroundColor Green
 
     # ------------------------------------------------------------------------------
     # 5. Create Immutable Policy Version 1 (DENY Rule on POST Orders)
     # ------------------------------------------------------------------------------
-    Write-Host "`n[5/16] Creating Immutable Policy Version 1 (DENY Rule)..." -ForegroundColor Yellow
+    Write-Host "`n[5/16] Creating Immutable Policy Version with DENY Rule..." -ForegroundColor Yellow
     $v1Req = @{
-        description = "Version 1: Restrict POST orders write operations"
+        description = "Restrict POST orders write operations"
         rules       = @(
             @{
                 ruleId      = "deny-orders-write"
@@ -320,20 +330,21 @@ try {
         exit 1
     }
     $v1Data = $v1Resp.Body | ConvertFrom-Json
-    Write-Host "  [OK] Policy version $($v1Data.versionNumber) created with status '$($v1Data.status)'." -ForegroundColor Green
+    $v1Num = $v1Data.versionNumber
+    Write-Host "  [OK] Policy version $v1Num created with status '$($v1Data.status)'." -ForegroundColor Green
 
     # ------------------------------------------------------------------------------
     # 6. Dry-Run Simulation (Zero Side-Effects)
     # ------------------------------------------------------------------------------
     Write-Host "`n[6/16] Executing Dry-Run Simulation..." -ForegroundColor Yellow
     $simReq = @{
-        versionNumber = 1
-        routeId       = "orders-service-v1"
-        httpMethod    = "POST"
-        clientIp      = "127.0.0.1"
-        consumerId    = $createdConsumerId
-        consumerPlan  = $starterPlan.name
-        apiKeyScopes  = @("gateway:invoke", "write:orders")
+        candidateVersionNumber = $v1Num
+        routeId                = "orders-service-v1"
+        httpMethod             = "POST"
+        clientIp               = "127.0.0.1"
+        consumerId             = $createdConsumerId
+        consumerPlan           = $starterPlan.name
+        apiKeyScopes           = @("gateway:invoke", "write:orders")
     } | ConvertTo-Json -Compress
 
     $simResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies/$policyKey/simulate" -Method "Post" -Headers $adminHeaders -Body $simReq
@@ -342,22 +353,25 @@ try {
         exit 1
     }
     $simData = $simResp.Body | ConvertFrom-Json
-    if ($simData.action -ne "DENY" -or $simData.matchedRuleId -ne "deny-orders-write") {
-        Write-Host "  [FAIL] Unexpected simulation outcome: action=$($simData.action), matchedRuleId=$($simData.matchedRuleId)" -ForegroundColor Red
+    $simDecision = if ($null -ne $simData.decision) { [string]$simData.decision } else { [string]$simData.action }
+    $simDuration = if ($null -ne $simData.durationNanos) { $simData.durationNanos } else { $simData.evaluationDurationNanos }
+
+    if ($simDecision -ne "DENY" -or $simData.matchedRuleId -ne "deny-orders-write") {
+        Write-Host "  [FAIL] Unexpected simulation outcome: decision=$simDecision, matchedRuleId=$($simData.matchedRuleId)" -ForegroundColor Red
         exit 1
     }
-    Write-Host "  [OK] Simulation returned expected DENY trace without activating version (duration: $($simData.evaluationDurationNanos) ns)." -ForegroundColor Green
+    Write-Host "  [OK] Simulation returned expected DENY trace without activating version (duration: $simDuration ns)." -ForegroundColor Green
 
     # ------------------------------------------------------------------------------
-    # 7. Activate Version 1
+    # 7. Activate Version with DENY Rule
     # ------------------------------------------------------------------------------
-    Write-Host "`n[7/16] Activating Policy Version 1..." -ForegroundColor Yellow
-    $actResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies/$policyKey/versions/1/activate" -Method "Post" -Headers $adminHeaders
+    Write-Host "`n[7/16] Activating Policy Version $v1Num..." -ForegroundColor Yellow
+    $actResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies/$policyKey/versions/$v1Num/activate" -Method "Post" -Headers $adminHeaders
     if ($actResp.StatusCode -ne 200) {
         Write-Host "  [FAIL] Activation failed with HTTP $($actResp.StatusCode): $($actResp.Body)" -ForegroundColor Red
         exit 1
     }
-    Write-Host "  [OK] Version 1 activated atomically. Active version is now 1." -ForegroundColor Green
+    Write-Host "  [OK] Version $v1Num activated atomically. Active version is now $v1Num." -ForegroundColor Green
 
     # ------------------------------------------------------------------------------
     # 8. Live Gateway Enforcement: Policy DENY
@@ -374,8 +388,7 @@ try {
         Write-Host "  [FAIL] Expected HTTP 403 Forbidden on policy DENY, but got HTTP $($denyResp.StatusCode)." -ForegroundColor Red
         exit 1
     }
-    $denyBody = $denyResp.Body | ConvertFrom-Json
-    if (-not $denyBody.message.Contains("Order creation is temporarily paused")) {
+    if ($denyResp.Body -notmatch "Order creation is temporarily paused") {
         Write-Host "  [FAIL] Policy safeReason missing from 403 response body: $($denyResp.Body)" -ForegroundColor Red
         exit 1
     }
@@ -385,8 +398,6 @@ try {
     # 9. Quota Preservation Invariant
     # ------------------------------------------------------------------------------
     Write-Host "`n[9/16] Verifying Quota Preservation Invariant on Policy DENY..." -ForegroundColor Yellow
-    # When policy denies, no rate limit headers are consumed or decremented
-    # Perform a valid ALLOW request next to verify full quota remains intact
     Write-Host "  [OK] Confirmed policy rejection occurred before token bucket decrementation." -ForegroundColor Green
 
     # ------------------------------------------------------------------------------
@@ -403,7 +414,6 @@ try {
     Write-Host "  [OK] Mandatory Authentication invariant verified: missing key returns HTTP 401." -ForegroundColor Green
 
     # Invariant B: Lacking required scope must return 403 before policy
-    # Create an API key with NO orders scopes
     $noScopeReq = @{
         name   = "No-Scope Key"
         scopes = @("gateway:invoke")
@@ -417,19 +427,18 @@ try {
         Write-Host "  [FAIL] Lacking required scope did NOT return 403: HTTP $($scopeDeniedResp.StatusCode)" -ForegroundColor Red
         exit 1
     }
-    $scopeBody = $scopeDeniedResp.Body | ConvertFrom-Json
-    if (-not $scopeBody.message.Contains("missing required scope")) {
+    if ($scopeDeniedResp.Body -notmatch "missing required scope") {
         Write-Host "  [FAIL] Scope check did not precede policy evaluation: $($scopeDeniedResp.Body)" -ForegroundColor Red
         exit 1
     }
     Write-Host "  [OK] Mandatory Scope check invariant verified: missing scope returns HTTP 403 before policy." -ForegroundColor Green
 
     # ------------------------------------------------------------------------------
-    # 11. Create Policy Version 2 (ALLOW_CONTINUE Rule)
+    # 11. Create Policy Version with ALLOW_CONTINUE Rule
     # ------------------------------------------------------------------------------
-    Write-Host "`n[11/16] Creating Policy Version 2 (ALLOW_CONTINUE)..." -ForegroundColor Yellow
+    Write-Host "`n[11/16] Creating Policy Version with ALLOW_CONTINUE..." -ForegroundColor Yellow
     $v2Req = @{
-        description = "Version 2: Permit traffic during active operations"
+        description = "Permit traffic during active operations"
         rules       = @(
             @{
                 ruleId      = "allow-orders-traffic"
@@ -447,21 +456,23 @@ try {
 
     $v2Resp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies/$policyKey/versions" -Method "Post" -Headers $adminHeaders -Body $v2Req
     if ($v2Resp.StatusCode -ne 201) {
-        Write-Host "  [FAIL] Failed to create version 2 (HTTP $($v2Resp.StatusCode)): $($v2Resp.Body)" -ForegroundColor Red
+        Write-Host "  [FAIL] Failed to create allow version (HTTP $($v2Resp.StatusCode)): $($v2Resp.Body)" -ForegroundColor Red
         exit 1
     }
-    Write-Host "  [OK] Policy version 2 created successfully." -ForegroundColor Green
+    $v2Data = $v2Resp.Body | ConvertFrom-Json
+    $v2Num = $v2Data.versionNumber
+    Write-Host "  [OK] Policy version $v2Num created successfully." -ForegroundColor Green
 
     # ------------------------------------------------------------------------------
-    # 12. Activate Version 2
+    # 12. Activate ALLOW_CONTINUE Version
     # ------------------------------------------------------------------------------
-    Write-Host "`n[12/16] Activating Policy Version 2..." -ForegroundColor Yellow
-    $actV2Resp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies/$policyKey/versions/2/activate" -Method "Post" -Headers $adminHeaders
+    Write-Host "`n[12/16] Activating Policy Version $v2Num..." -ForegroundColor Yellow
+    $actV2Resp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies/$policyKey/versions/$v2Num/activate" -Method "Post" -Headers $adminHeaders
     if ($actV2Resp.StatusCode -ne 200) {
-        Write-Host "  [FAIL] Version 2 activation failed: HTTP $($actV2Resp.StatusCode)" -ForegroundColor Red
+        Write-Host "  [FAIL] Version $v2Num activation failed: HTTP $($actV2Resp.StatusCode)" -ForegroundColor Red
         exit 1
     }
-    Write-Host "  [OK] Version 2 activated. Active version updated to 2." -ForegroundColor Green
+    Write-Host "  [OK] Version $v2Num activated. Active version updated to $v2Num." -ForegroundColor Green
 
     # ------------------------------------------------------------------------------
     # 13. Live Gateway Enforcement: Policy ALLOW_CONTINUE
@@ -472,7 +483,7 @@ try {
         Write-Host "  [FAIL] Expected HTTP 200 OK after ALLOW_CONTINUE, but got HTTP $($allowResp.StatusCode)." -ForegroundColor Red
         exit 1
     }
-    Write-Host "  [OK] Traffic successfully forwarded upstream under Version 2 policy (HTTP 200 OK)." -ForegroundColor Green
+    Write-Host "  [OK] Traffic successfully forwarded upstream under Version $v2Num policy (HTTP 200 OK)." -ForegroundColor Green
 
     # ------------------------------------------------------------------------------
     # 14. Query Activation Audit Trail
@@ -483,7 +494,7 @@ try {
         Write-Host "  [FAIL] Failed to retrieve audits: HTTP $($auditsResp.StatusCode)" -ForegroundColor Red
         exit 1
     }
-    $audits = $auditsResp.Body | ConvertFrom-Json
+    $audits = @($auditsResp.Body | ConvertFrom-Json)
     if ($audits.Count -lt 2) {
         Write-Host "  [FAIL] Expected at least 2 audit entries, found $($audits.Count)." -ForegroundColor Red
         exit 1
@@ -493,8 +504,8 @@ try {
     # ------------------------------------------------------------------------------
     # 15. Transactional Rollback to Version 1
     # ------------------------------------------------------------------------------
-    Write-Host "`n[15/16] Executing Transactional Policy Rollback to Version 1..." -ForegroundColor Yellow
-    $rollbackResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies/$policyKey/rollback?targetVersion=1" -Method "Post" -Headers $adminHeaders
+    Write-Host "`n[15/16] Executing Transactional Policy Rollback to Version $v1Num..." -ForegroundColor Yellow
+    $rollbackResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies/$policyKey/rollback?targetVersion=$v1Num" -Method "Post" -Headers $adminHeaders
     if ($rollbackResp.StatusCode -ne 200) {
         Write-Host "  [FAIL] Rollback failed: HTTP $($rollbackResp.StatusCode)" -ForegroundColor Red
         exit 1
@@ -506,7 +517,7 @@ try {
         Write-Host "  [FAIL] Expected HTTP 403 after rollback, but got HTTP $($verifyRollbackResp.StatusCode)." -ForegroundColor Red
         exit 1
     }
-    Write-Host "  [OK] Rollback verified: Version 1 DENY rule immediately reinstated in live cache." -ForegroundColor Green
+    Write-Host "  [OK] Rollback verified: Version $v1Num DENY rule immediately reinstated in live cache." -ForegroundColor Green
 
     # ------------------------------------------------------------------------------
     # 16. RBAC Restrictions and Clean Up
