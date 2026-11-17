@@ -920,33 +920,118 @@ The test suite contains 31 new automated tests across unit and integration level
 - `AnalyticsControllerTest`: RBAC permissions (`SUPER_ADMIN`, `ADMIN`, `ANALYST` allowed; unauthenticated and consumer API keys rejected with 401), input validation.
 - `GatewayUsageTrackingIntegrationTest`: End-to-end HTTP gateway requests generating telemetry, correlation ID propagation, scope denial capture, and missing key handling.
 
-### 8. Live Verification
+---
 
-Run the PowerShell 5.1 live verification script:
+## Phase 4: Production-Quality React Admin Dashboard
 
-```powershell
-.\verify-usage-analytics.ps1
+A developer-platform administrative dashboard built with React 19, TypeScript, Vite, Tailwind CSS, TanStack Query, and Recharts.
+
+### 1. Technology Stack & Key Libraries
+
+- **Framework & Runtime**: React 19 (`react` 19.3.1, `react-dom` 19.3.1), TypeScript 5.7.3, Vite 8.3.8
+- **Styling & UI**: Tailwind CSS (with custom design system tokens), custom accessible shadcn/ui-inspired primitives, Lucide React icons
+- **State & Data Fetching**: TanStack Query v5 (`@tanstack/react-query`) with automatic background caching and mutation invalidation
+- **Routing**: React Router v7 (`react-router-dom`) with declarative protected route guards and role gating
+- **Forms & Validation**: React Hook Form with Zod runtime schema validation
+- **Data Visualization**: Recharts (Area charts for time-series throughput, horizontal bar charts for subscription distribution, donut charts for outcome ratios)
+- **Testing**: Vitest, React Testing Library, `@testing-library/jest-dom`, JSDOM
+
+### 2. Frontend Project Structure
+
+```
+D:\Development\Gatekeeper\frontend\
+├── src/
+│   ├── components/
+│   │   ├── auth/
+│   │   │   ├── OneTimeSecretModal.tsx     # One-time plaintext secret reveal modal (wipes on close)
+│   │   │   └── ProtectedRoute.tsx         # Route guard with session & role validation
+│   │   ├── layout/
+│   │   │   ├── AppLayout.tsx              # Shell with responsive drawer & topbar
+│   │   │   ├── Header.tsx                 # Top navigation, status indicator & user menu
+│   │   │   └── Sidebar.tsx                # Slate-950 developer navigation sidebar
+│   │   └── ui/                            # Reusable accessible UI components
+│   │       ├── Badge.tsx, Breadcrumbs.tsx, Button.tsx, Card.tsx, DateRangePicker.tsx
+│   │       ├── Input.tsx, Modal.tsx, Select.tsx, Skeleton.tsx, Table.tsx
+│   ├── context/
+│   │   ├── AuthContext.tsx                # Strictly volatile in-memory JWT storage & RBAC
+│   │   └── ToastContext.tsx               # Accessible auto-dismissing toast notifications
+│   ├── lib/
+│   │   ├── apiClient.ts                   # Axios instance, error normalization, 401 callback
+│   │   └── utils.ts                       # Date/number formatting, cn() Tailwind helper
+│   ├── pages/
+│   │   ├── Analytics.tsx                  # Deep-dive traffic metrics & outcome distributions
+│   │   ├── ApiKeys.tsx                    # Multi-consumer key management & generation
+│   │   ├── ConsumerDetail.tsx             # Detail view with key & audit event tabs
+│   │   ├── Consumers.tsx                  # Consumer catalog, pagination, lifecycle actions
+│   │   ├── Login.tsx                      # Operator authentication & lockout handling
+│   │   ├── NotFound.tsx                   # 404 error page
+│   │   ├── Overview.tsx                   # KPI summary, traffic trend & top consumers
+│   │   ├── Plans.tsx                      # Token bucket capacity & refill specifications
+│   │   └── Security.tsx                   # Administrator profile & password change workflow
+│   ├── services/
+│   │   ├── analyticsService.ts, apiKeyService.ts, authService.ts, consumerService.ts, planService.ts
+│   ├── test/
+│   │   ├── setup.ts, apiClient.test.ts, AuthContext.test.tsx, Consumers.test.tsx
+│   │   ├── Login.test.tsx, OneTimeSecretModal.test.tsx, ProtectedRoute.test.tsx, utils.test.ts
+│   ├── types/
+│   │   ├── analytics.ts, api.ts, apiKey.ts, auth.ts, consumer.ts, plan.ts
+│   ├── App.tsx, main.tsx, index.css
+├── eslint.config.js, package.json, tailwind.config.js, tsconfig.app.json, vite.config.ts, vitest.config.ts
 ```
 
-Verification covers 18 end-to-end checks:
-1. Health check verification (`GET /api/v1/health`)
-2. Secure administrator authentication (`POST /api/v1/auth/login`)
-3. Plan query (`GET /api/v1/plans`)
-4. Test consumer creation (`POST /api/v1/consumers`)
-5. API key generation (`POST /api/v1/consumers/{id}/keys`)
-6. Verification that `lastUsedAt` is initially null
-7. Allowed traffic generation (`GET /api/v1/gateway/demo` with `X-Request-Id`)
-8. Scope-denied traffic generation (`GET /api/v1/gateway/orders` $\to$ 403)
-9. Quota exhaustion burst (`GET /api/v1/gateway/demo` $\to$ 429)
-10. Bounded polling for stream batch persistence in PostgreSQL
-11. Overview analytics verification (`GET /api/v1/analytics/overview`)
-12. Time-series analytics verification (`GET /api/v1/analytics/timeseries?granularity=hourly`)
-13. Specific consumer analytics verification (`GET /api/v1/analytics/consumers/{id}`)
-14. Paginated usage events audit verification (`GET /api/v1/analytics/consumers/{id}/usage`)
-15. Top consumers ranking verification (`GET /api/v1/analytics/top-consumers`)
-16. Monotonic `lastUsedAt` persistence verification on the API key
-17. Security isolation verification (anonymous access $\to$ 401; consumer API key $\to$ 401)
-18. Test consumer cleanup and soft deletion (`DELETE /api/v1/consumers/{id}`)
+### 3. Security Architecture & In-Memory Session Policy
+
+1. **In-Memory JWT Storage**:
+   - The dashboard **never** persists JWTs, passwords, or cryptographic secrets to `localStorage`, `sessionStorage`, or cookies.
+   - Tokens reside exclusively in a JavaScript closure within `apiClient.ts` / `AuthContext.tsx`.
+   - Reloading the browser terminates the active session, requiring explicit operator reauthentication.
+2. **One-Time Secret Reveal Modal (`OneTimeSecretModal.tsx`)**:
+   - Plaintext API keys generated by `POST /api/v1/consumers/{id}/keys` are displayed strictly once in an isolated modal.
+   - Plaintext keys are never placed in the TanStack Query cache, never written to disk, and never logged.
+   - Dismissing the modal immediately wipes the plaintext key from component state (`null`).
+3. **Role-Based Access Control (RBAC)**:
+   - Evaluates roles (`ROLE_SUPER_ADMIN`, `ROLE_ADMIN`, `ROLE_ANALYST`) returned from backend authentication.
+   - `ROLE_ANALYST` is granted read-only visibility into consumers, plans, and analytics; creation, modification, suspension, soft-deletion, and key generation/revocation controls are disabled or hidden.
+4. **Development CORS & Proxy Isolation**:
+   - Vite development server proxies `/api` directly to `http://localhost:8080`.
+   - Spring Security (`SecurityConfig.java`) explicitly restricts CORS preflight and requests to `http://localhost:5173` and `http://127.0.0.1:5173`. Any other cross-origin request is rejected with `HTTP 403 Forbidden`.
+
+### 4. Running the Dashboard Locally
+
+```powershell
+# 1. Start Docker containers (PostgreSQL & Redis)
+docker compose up -d
+
+# 2. Start Spring Boot backend (port 8080)
+. .\env.ps1
+cd D:\Development\Gatekeeper\backend
+mvn spring-boot:run
+
+# 3. Start React frontend dev server (port 5173) in a new terminal
+cd D:\Development\Gatekeeper\frontend
+npm run dev
+```
+
+Open `http://localhost:5173` in a web browser.
+
+### 5. Frontend Quality Checks
+
+```powershell
+cd D:\Development\Gatekeeper\frontend
+
+# TypeScript type checking (0 errors)
+npx tsc -b
+
+# ESLint code style & purity check (0 errors, 0 warnings)
+npm run lint
+
+# Vitest unit & component test suite (25 passing tests)
+npm run test
+
+# Production build bundle
+npm run build
+```
+
 
 
 
