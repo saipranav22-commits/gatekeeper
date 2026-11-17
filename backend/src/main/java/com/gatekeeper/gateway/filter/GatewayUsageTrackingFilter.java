@@ -53,7 +53,7 @@ public class GatewayUsageTrackingFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
         String path = request.getRequestURI();
-        return !path.startsWith("/api/v1/gateway");
+        return !path.startsWith("/api/v1/gateway") && !path.startsWith("/api/v1/proxy");
     }
 
     @Override
@@ -140,9 +140,18 @@ public class GatewayUsageTrackingFilter extends OncePerRequestFilter {
             return;
         }
 
+        String routeId = (String) request.getAttribute("GATEKEEPER_ROUTE_ID");
+        Integer upstreamStatus = (Integer) request.getAttribute("GATEKEEPER_UPSTREAM_STATUS");
+        Integer upstreamLatencyMs = (Integer) request.getAttribute("GATEKEEPER_UPSTREAM_LATENCY_MS");
+
         // Normalize route template to prevent unbounded metric cardinality
         String rawPath = request.getRequestURI();
-        String normalizedRoute = normalizeRoute(rawPath);
+        String normalizedRoute;
+        if (routeId != null) {
+            normalizedRoute = "/api/v1/proxy/" + routeId;
+        } else {
+            normalizedRoute = normalizeRoute(rawPath);
+        }
 
         UUID consumerId = principal != null ? principal.consumerId() : null;
         UUID apiKeyId = principal != null ? principal.apiKeyId() : null;
@@ -173,7 +182,10 @@ public class GatewayUsageTrackingFilter extends OncePerRequestFilter {
             planName,
             correlationId,
             clientIp,
-            userAgent
+            userAgent,
+            routeId,
+            upstreamStatus,
+            upstreamLatencyMs
         );
 
         usageEventPublisher.publishAsync(event);

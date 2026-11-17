@@ -1,0 +1,7 @@
+server:
+  port: ${ORDERS_PORT:8081}
+  shutdown: graceful
+
+spring:
+  application:
+    name: orders-service

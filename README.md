@@ -1032,6 +1032,114 @@ npm run test
 npm run build
 ```
 
+---
+
+## Phase 5A: Real API Routing Engine & Upstream Service Integration
+
+Phase 5A transforms Gatekeeper from a platform protecting synthetic demonstration endpoints into a production-grade, secure API gateway that forwards authenticated, authorized, and rate-limited HTTP traffic to independently running upstream microservices.
+
+### 1. Architecture & Upstream Services
+
+```mermaid
+flowchart TD
+    Client["Client / External Consumer (X-API-Key)"] --> GW_Tracking["1. GatewayUsageTrackingFilter\n(Start latency timer, generate X-Request-Id)"]
+    GW_Tracking --> GW_Auth["2. ConsumerApiKeyAuthenticationFilter\n(Validate X-API-Key, active consumer check)"]
+    GW_Auth --> GW_RateLimit["3. ConsumerRateLimitFilter\n(Route match, method scope auth, atomic token bucket)"]
+    GW_RateLimit --> GW_Proxy["4. GatewayProxyController / HttpProxyEngine\n(SSRF validation, sanitize headers, async HTTP dispatch)"]
+    GW_Proxy --> Upstream["5. Upstream Microservice\n(Orders Service :8081 / Inventory Service :8082)"]
+    Upstream --> GW_Proxy
+    GW_Proxy --> GW_RateLimit
+    GW_RateLimit --> GW_Auth
+    GW_Auth --> GW_Tracking
+    GW_Tracking --> Telemetry["6. Asynchronous Redis Streams Telemetry\n(Route ID, Upstream status & latency, correlation ID)"]
+    GW_Tracking --> ClientResponse["Client Response\n(RateLimit-* headers, sanitized upstream body)"]
+```
+
+#### Dedicated Upstream Services (`services/`)
+- **Orders Service** (`services/orders-service`):
+  - Listens on port `8081`.
+  - In-memory order repository with idempotency and order tracking.
+  - Endpoints: `GET /orders`, `GET /orders/{id}`, `POST /orders`, `GET /health`.
+  - Mapped gateway route: `/api/v1/proxy/orders/**` $\to$ `http://localhost:8081`.
+  - Required Scopes: `GET -> orders:read`, `POST -> orders:write`.
+- **Inventory Service** (`services/inventory-service`):
+  - Listens on port `8082`.
+  - In-memory inventory catalog with stock tracking and warehouse partitioning.
+  - Endpoints: `GET /inventory`, `GET /inventory/{sku}`, `GET /health`.
+  - Mapped gateway route: `/api/v1/proxy/inventory/**` $\to$ `http://localhost:8082`.
+  - Required Scopes: `GET -> inventory:read`.
+  - Allowed Methods: `GET` only (mutating methods like `DELETE` or `POST` return `HTTP 405 Method Not Allowed`).
+
+---
+
+### 2. Security Invariants & Filter Ordering
+
+1. **Route Match & Scope Resolution Before Quota Consumption**:
+   - The route registry evaluates incoming paths using Spring `AntPathMatcher`.
+   - Unknown routes return **HTTP 404 Not Found** with **zero quota deducted**.
+   - Disabled routes return **HTTP 503 Service Unavailable** with **zero quota deducted**.
+   - Disallowed HTTP methods return **HTTP 405 Method Not Allowed** with **zero quota deducted**.
+   - Missing required scopes return **HTTP 403 Forbidden** with **zero quota deducted**.
+2. **Atomic Rate Limit Quota Deduction**:
+   - Quota deduction (1 token) against the Redis Lua Token Bucket only executes after route existence, consumer active status, and method scope authorization pass.
+   - Exceeded quotas return **HTTP 429 Too Many Requests** with `Retry-After` headers.
+3. **SSRF Guard & Open Proxy Prevention**:
+   - Upstream base URIs are strictly resolved from server-authoritative route configuration (`GatewayRouteRegistry`). Clients cannot specify arbitrary destination targets.
+   - URI schemes are restricted to `http` and `https`.
+   - Target hosts are validated against an allowlist (`localhost`, `127.0.0.1`, `::1`).
+   - Cloud metadata IP addresses (`169.254.169.254`, `metadata.google.internal`, `100.100.100.200`) are blocked.
+   - Protected internal database/cache ports (PostgreSQL `5432`/`5434`, Redis `6379`/`6380`) are blocked.
+   - Path traversal sequences (`..`, `%2e%2e`, `%2e`, null bytes) are rejected with **HTTP 400 Bad Request**.
+   - Automatic HTTP redirect following is disabled (`HttpClient.Redirect.NEVER`) to prevent SSRF via open redirects.
+4. **Header Sanitization & Correlation Propagation**:
+   - Hop-by-hop headers (`Connection`, `Keep-Alive`, `Proxy-Authenticate`, `Transfer-Encoding`, `Upgrade`, `Host`) are stripped in both directions.
+   - Sensitive client credentials (`X-API-Key`, `Authorization`, `Cookie`, `X-Admin-*`) are stripped before forwarding to upstream services.
+   - Correlation tracking (`X-Request-Id`, `X-Correlation-Id`) and client origin (`X-Forwarded-For`, `X-Forwarded-Proto`) are propagated upstream.
+5. **Bounded Streaming & Error Translation**:
+   - Request bodies exceeding route limits return **HTTP 413 Payload Too Large**.
+   - Unreachable upstream services return **HTTP 502 Bad Gateway**.
+   - Upstream service timeouts return **HTTP 504 Gateway Timeout**.
+
+---
+
+### 3. Asynchronous Routing Telemetry (Flyway V6)
+
+Flyway migration `V6__add_routing_telemetry_fields.sql` enriches the `usage_events` table with upstream routing metrics:
+- `route_id VARCHAR(100)`: Identifies the matched gateway route (e.g. `orders-service-v1`).
+- `upstream_status INTEGER`: Captures the HTTP status code returned by the upstream service.
+- `upstream_latency_ms INTEGER`: Tracks the upstream roundtrip duration in milliseconds.
+- Index `idx_usage_events_route_id` on `usage_events(route_id)` for high-performance analytics queries.
+
+Telemetry events are asynchronously published via Redis Streams and ingested into PostgreSQL in non-blocking batches by `UsageEventBatchConsumer`.
+
+---
+
+### 4. Live Verification & Benchmarks
+
+#### Live Verification Script (`verify-real-api-routing.ps1`)
+A PowerShell 5.1-compatible verification script tests all 19 real API routing scenarios against live services:
+- Automatically detects and launches upstream Orders (`8081`) and Inventory (`8082`) services.
+- Authenticates administrator and provisions dedicated test consumers and scoped API keys.
+- Validates GET/POST proxying, path parameters, query parameters, method restrictions, and scope gates.
+- Tests unauthenticated (401), invalid key (401), unknown route (404), and path traversal (400) rejections.
+- Verifies asynchronous routing telemetry ingestion and executes cleanup.
+
+```powershell
+.\verify-real-api-routing.ps1
+```
+
+#### Latency Benchmarks
+Measure routing overhead and roundtrip latency across 50+ requests:
+
+```powershell
+# PowerShell benchmark
+.\benchmark-routing.ps1 -ApiKey "gk_live_..." -Requests 50
+
+# Node.js benchmark
+node benchmark-routing.js "gk_live_..." http://localhost:8080 50
+```
+
+
 
 
 

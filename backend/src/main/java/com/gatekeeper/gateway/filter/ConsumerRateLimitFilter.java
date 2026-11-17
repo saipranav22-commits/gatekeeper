@@ -6,12 +6,16 @@ import com.gatekeeper.gateway.dto.ConsumerPrincipal;
 import com.gatekeeper.ratelimit.dto.RateLimitDecision;
 import com.gatekeeper.ratelimit.exception.RateLimitUnavailableException;
 import com.gatekeeper.ratelimit.service.TokenBucketRateLimiter;
+import com.gatekeeper.routing.model.GatewayRoute;
+import com.gatekeeper.routing.model.RouteMatchResult;
+import com.gatekeeper.routing.service.GatewayRouteRegistry;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.lang.NonNull;
@@ -24,13 +28,16 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
- * Enforces scope authorization and distributed Redis Token Bucket rate limiting on consumer gateway requests.
+ * Enforces route matching, scope authorization, and distributed Redis Token Bucket rate limiting
+ * on consumer gateway requests.
  *
  * <p>Execution Order:
  * <ol>
- *   <li>Scope checking occurs BEFORE quota consumption (denied scope requests do not decrement tokens).</li>
+ *   <li>Route match, method validation, and scope checking occur BEFORE quota consumption
+ *       (invalid routes, disallowed methods, or denied scope requests do not decrement tokens).</li>
  *   <li>Atomic Token Bucket consumption against consumer-level shared bucket in Redis.</li>
  *   <li>Rate limit headers (RateLimit-Limit, RateLimit-Remaining, RateLimit-Reset) attached to response.</li>
  *   <li>Fails closed with HTTP 429 on quota exhaustion (attaching Retry-After header).</li>
@@ -51,16 +58,26 @@ public class ConsumerRateLimitFilter extends OncePerRequestFilter {
 
     private final TokenBucketRateLimiter tokenBucketRateLimiter;
     private final ObjectMapper objectMapper;
+    private final GatewayRouteRegistry routeRegistry;
 
     public ConsumerRateLimitFilter(TokenBucketRateLimiter tokenBucketRateLimiter, ObjectMapper objectMapper) {
+        this(tokenBucketRateLimiter, objectMapper, null);
+    }
+
+    @Autowired
+    public ConsumerRateLimitFilter(
+            TokenBucketRateLimiter tokenBucketRateLimiter,
+            ObjectMapper objectMapper,
+            @Autowired(required = false) GatewayRouteRegistry routeRegistry) {
         this.tokenBucketRateLimiter = Objects.requireNonNull(tokenBucketRateLimiter, "tokenBucketRateLimiter must not be null");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper must not be null");
+        this.routeRegistry = routeRegistry;
     }
 
     @Override
     protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
         String path = request.getRequestURI();
-        return !path.startsWith("/api/v1/gateway");
+        return !path.startsWith("/api/v1/gateway") && !path.startsWith("/api/v1/proxy");
     }
 
     @Override
@@ -93,7 +110,49 @@ public class ConsumerRateLimitFilter extends OncePerRequestFilter {
         }
 
         String uri = request.getRequestURI();
-        String requiredScope = resolveRequiredScope(uri);
+        String requiredScope;
+
+        // Route matching and method validation for proxy endpoints
+        if (uri.startsWith("/api/v1/proxy")) {
+            if (routeRegistry != null) {
+                RouteMatchResult matchResult;
+                try {
+                    Optional<RouteMatchResult> matchOpt = routeRegistry.matchRoute(uri, request.getMethod());
+                    if (matchOpt.isEmpty()) {
+                        log.warn("Proxy route not found for path: {}", uri);
+                        sendError(response, request, HttpStatus.NOT_FOUND, "No matching route found for: " + uri);
+                        return;
+                    }
+                    matchResult = matchOpt.get();
+                } catch (SecurityException ex) {
+                    log.warn("Security violation on path {}: {}", uri, ex.getMessage());
+                    sendError(response, request, HttpStatus.BAD_REQUEST, "Invalid request path: " + ex.getMessage());
+                    return;
+                }
+
+                GatewayRoute route = matchResult.route();
+                if (!route.enabled()) {
+                    log.warn("Route {} is disabled", route.routeId());
+                    sendError(response, request, HttpStatus.SERVICE_UNAVAILABLE, "Route '" + route.routeId() + "' is temporarily disabled");
+                    return;
+                }
+
+                if (!route.isMethodAllowed(request.getMethod())) {
+                    log.warn("Method {} not allowed on route {}", request.getMethod(), route.routeId());
+                    sendError(response, request, HttpStatus.METHOD_NOT_ALLOWED, "HTTP method '" + request.getMethod() + "' not allowed for route '" + route.routeId() + "'");
+                    return;
+                }
+
+                requiredScope = matchResult.requiredScope();
+                request.setAttribute("GATEKEEPER_MATCHED_ROUTE", route);
+                request.setAttribute("GATEKEEPER_ROUTE_ID", route.routeId());
+                request.setAttribute("GATEKEEPER_TARGET_PATH", matchResult.targetPath());
+            } else {
+                requiredScope = null;
+            }
+        } else {
+            requiredScope = resolveRequiredScope(uri);
+        }
 
         // 1. Scope checking BEFORE quota consumption
         if (requiredScope != null && !principal.hasScope(requiredScope)) {

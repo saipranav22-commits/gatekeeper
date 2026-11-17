@@ -76,6 +76,15 @@ public class UsageEvent {
     @Column(name = "correlation_id", length = 64)
     private String correlationId;
 
+    @Column(name = "route_id", length = 100)
+    private String routeId;
+
+    @Column(name = "upstream_status")
+    private Integer upstreamStatus;
+
+    @Column(name = "upstream_latency_ms")
+    private Integer upstreamLatencyMs;
+
     public UsageEvent() {
     }
 
@@ -253,6 +262,30 @@ public class UsageEvent {
 
     public void setCorrelationId(String correlationId) {
         this.correlationId = correlationId;
+    }
+
+    public String getRouteId() {
+        return routeId;
+    }
+
+    public void setRouteId(String routeId) {
+        this.routeId = routeId;
+    }
+
+    public Integer getUpstreamStatus() {
+        return upstreamStatus;
+    }
+
+    public void setUpstreamStatus(Integer upstreamStatus) {
+        this.upstreamStatus = upstreamStatus;
+    }
+
+    public Integer getUpstreamLatencyMs() {
+        return upstreamLatencyMs;
+    }
+
+    public void setUpstreamLatencyMs(Integer upstreamLatencyMs) {
+        this.upstreamLatencyMs = upstreamLatencyMs;
     }
 
     @Override

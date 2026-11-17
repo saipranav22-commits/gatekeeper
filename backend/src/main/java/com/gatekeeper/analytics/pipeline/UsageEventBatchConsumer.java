@@ -62,8 +62,9 @@ public class UsageEventBatchConsumer {
             id, timestamp, consumer_id, api_key_id, consumer_email_snapshot,
             key_prefix_snapshot, endpoint_path, http_method, http_status,
             latency_ms, rate_limited, rejection_reason, ip_address, user_agent,
-            outcome_category, rate_limit_plan, correlation_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            outcome_category, rate_limit_plan, correlation_id,
+            route_id, upstream_status, upstream_latency_ms
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (id) DO NOTHING
         """;
 
@@ -352,6 +353,17 @@ public class UsageEventBatchConsumer {
                     ps.setString(15, ev.outcomeCategory() != null ? ev.outcomeCategory().name() : "ALLOWED");
                     ps.setString(16, ev.rateLimitPlan());
                     ps.setString(17, ev.correlationId());
+                    ps.setString(18, ev.routeId());
+                    if (ev.upstreamStatus() != null) {
+                        ps.setInt(19, ev.upstreamStatus());
+                    } else {
+                        ps.setNull(19, Types.INTEGER);
+                    }
+                    if (ev.upstreamLatencyMs() != null) {
+                        ps.setInt(20, ev.upstreamLatencyMs());
+                    } else {
+                        ps.setNull(20, Types.INTEGER);
+                    }
                 });
 
                 // 2. Monotonic update of api_keys.last_used_at for existing keys

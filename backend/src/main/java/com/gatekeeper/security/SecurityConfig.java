@@ -80,7 +80,7 @@ public class SecurityConfig {
     @Order(1)
     public SecurityFilterChain gatewaySecurityFilterChain(HttpSecurity http) throws Exception {
         http
-            .securityMatcher("/api/v1/gateway/**")
+            .securityMatcher("/api/v1/gateway/**", "/api/v1/proxy/**")
             .csrf(AbstractHttpConfigurer::disable)
             .cors(Customizer.withDefaults())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

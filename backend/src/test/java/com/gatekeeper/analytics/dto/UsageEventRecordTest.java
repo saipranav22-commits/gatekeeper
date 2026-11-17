@@ -55,6 +55,45 @@ class UsageEventRecordTest {
         assertThat(record.correlationId()).isEqualTo("corr-12345");
         assertThat(record.ipAddress()).isEqualTo("127.0.0.1");
         assertThat(record.userAgent()).isEqualTo("Mozilla/5.0");
+        assertThat(record.routeId()).isNull();
+        assertThat(record.upstreamStatus()).isNull();
+        assertThat(record.upstreamLatencyMs()).isNull();
+    }
+
+    @Test
+    @DisplayName("UsageEventRecord retains routing and upstream fields")
+    void testUsageEventRecordWithRoutingFields() {
+        UUID eventId = UUID.randomUUID();
+        UUID consumerId = UUID.randomUUID();
+        UUID apiKeyId = UUID.randomUUID();
+        Instant now = Instant.now();
+
+        UsageEventRecord record = new UsageEventRecord(
+            eventId,
+            now,
+            consumerId,
+            apiKeyId,
+            "test@example.com",
+            "gk_live_12345678",
+            "/api/v1/proxy/orders/orders",
+            "POST",
+            201,
+            25,
+            false,
+            null,
+            OutcomeCategory.ALLOWED,
+            "PRO",
+            "corr-67890",
+            "127.0.0.1",
+            "Gatekeeper-Client/1.0",
+            "orders-service-route",
+            201,
+            18
+        );
+
+        assertThat(record.routeId()).isEqualTo("orders-service-route");
+        assertThat(record.upstreamStatus()).isEqualTo(201);
+        assertThat(record.upstreamLatencyMs()).isEqualTo(18);
     }
 
     @Test

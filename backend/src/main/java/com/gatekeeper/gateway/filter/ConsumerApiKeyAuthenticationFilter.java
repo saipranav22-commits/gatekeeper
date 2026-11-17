@@ -51,7 +51,7 @@ public class ConsumerApiKeyAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(@NonNull HttpServletRequest request) {
         String path = request.getRequestURI();
-        return !path.startsWith("/api/v1/gateway");
+        return !path.startsWith("/api/v1/gateway") && !path.startsWith("/api/v1/proxy");
     }
 
     @Override
