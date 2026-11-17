@@ -1,23 +1,23 @@
 export interface PageableResponse<T> {
   content: T[]
-  pageable: {
+  pageable?: {
     pageNumber: number
     pageSize: number
-    sort: {
+    sort?: {
       sorted: boolean
       unsorted: boolean
       empty: boolean
     }
-    offset: number
-    paged: boolean
-    unpaged: boolean
+    offset?: number
+    paged?: boolean
+    unpaged?: boolean
   }
   totalPages: number
   totalElements: number
   last: boolean
   size: number
   number: number
-  sort: {
+  sort?: {
     sorted: boolean
     unsorted: boolean
     empty: boolean
