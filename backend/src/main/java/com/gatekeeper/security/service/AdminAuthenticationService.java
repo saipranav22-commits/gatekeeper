@@ -63,11 +63,14 @@ public class AdminAuthenticationService {
         }
 
         Optional<AdminUser> adminOpt = adminUserRepository.findByUsername(username);
+        if (adminOpt.isEmpty()) {
+            adminOpt = adminUserRepository.findByEmail(username);
+        }
 
         // Constant-time-like generic rejection for non-existent users
         if (adminOpt.isEmpty()) {
             loginRateLimiter.recordFailure(rateLimitKey);
-            log.warn("Authentication failed: unknown username");
+            log.warn("Authentication failed: unknown user or email '{}'", username);
             throw new AdminAuthenticationException("Invalid username or password");
         }
 

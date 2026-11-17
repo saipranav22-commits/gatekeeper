@@ -54,6 +54,7 @@ export class NormalizedApiError extends Error {
     this.error = error
     this.details = details
     this.path = path
+    Object.setPrototypeOf(this, NormalizedApiError.prototype)
   }
 }
 
@@ -86,9 +87,10 @@ apiClient.interceptors.response.use(
     }
 
     if (status === 401) {
-      // Invalidate in-memory token and invoke session expiry callback
+      // Invalidate in-memory token and invoke session expiry callback for protected routes
       inMemoryToken = null
-      if (onUnauthorizedCallback) {
+      const isLoginRequest = error.config?.url?.includes('/api/v1/auth/login')
+      if (onUnauthorizedCallback && !isLoginRequest) {
         onUnauthorizedCallback()
       }
       message = message || 'Session expired or invalid credentials. Please log in again.'

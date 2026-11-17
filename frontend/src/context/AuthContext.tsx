@@ -41,7 +41,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true)
     try {
       const response = await authService.login(credentials)
-      setToken(response.accessToken)
+      const token = response.accessToken || (response as unknown as { token?: string })?.token || null
+      setToken(token)
       setAdmin(response.admin)
     } finally {
       setIsLoading(false)
@@ -52,7 +53,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true)
     try {
       const response = await authService.changePassword(request)
-      setToken(response.accessToken)
+      const token = response.accessToken || (response as unknown as { token?: string })?.token || null
+      setToken(token)
       setAdmin(response.admin)
     } finally {
       setIsLoading(false)

@@ -83,6 +83,31 @@ class AdminAuthenticationServiceTest {
     }
 
     @Test
+    @DisplayName("Successful administrator authentication via email returns valid LoginResponse")
+    void testSuccessfulAuthenticationViaEmail() {
+        UUID adminId = UUID.randomUUID();
+        AdminUser admin = new AdminUser("admin", "admin123@gmail.com", "$2a$12$hash", "ROLE_SUPER_ADMIN");
+        admin.setId(adminId);
+        admin.setActive(true);
+
+        when(loginRateLimiter.isBlocked("192.168.1.100:admin123@gmail.com")).thenReturn(false);
+        when(adminUserRepository.findByUsername("admin123@gmail.com")).thenReturn(Optional.empty());
+        when(adminUserRepository.findByEmail("admin123@gmail.com")).thenReturn(Optional.of(admin));
+        when(passwordEncoder.matches("ComplexPass123!", "$2a$12$hash")).thenReturn(true);
+        when(jwtService.generateToken(adminId, "admin", "ROLE_SUPER_ADMIN", 1L)).thenReturn("mock.jwt.token");
+
+        LoginRequest request = new LoginRequest("admin123@gmail.com", "ComplexPass123!");
+        LoginResponse response = authenticationService.authenticate(request, "192.168.1.100");
+
+        assertThat(response.accessToken()).isEqualTo("mock.jwt.token");
+        assertThat(response.tokenType()).isEqualTo("Bearer");
+        assertThat(response.admin().username()).isEqualTo("admin");
+        assertThat(response.admin().email()).isEqualTo("admin123@gmail.com");
+
+        verify(loginRateLimiter).recordSuccess("192.168.1.100:admin123@gmail.com");
+    }
+
+    @Test
     @DisplayName("Reject unknown username with generic error and record rate limit failure")
     void testUnknownUsername() {
         when(loginRateLimiter.isBlocked("192.168.1.100:unknown")).thenReturn(false);

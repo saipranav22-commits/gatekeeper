@@ -10,8 +10,15 @@ import { ShieldCheck, Lock, User, AlertCircle, Info } from 'lucide-react'
 import { NormalizedApiError } from '@/lib/apiClient'
 
 const loginSchema = z.object({
-  username: z.string().min(3, 'Username must be at least 3 characters').max(50),
-  password: z.string().min(8, 'Password must be at least 8 characters').max(100),
+  username: z
+    .string()
+    .trim()
+    .min(3, 'Username or email must be at least 3 characters')
+    .max(100, 'Username or email cannot exceed 100 characters'),
+  password: z
+    .string()
+    .min(8, 'Password must be at least 8 characters')
+    .max(100, 'Password cannot exceed 100 characters'),
 })
 
 type LoginFormValues = z.infer<typeof loginSchema>
@@ -52,15 +59,18 @@ export const Login: React.FC = () => {
       const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/'
       navigate(from, { replace: true })
     } catch (err) {
-      if (err instanceof NormalizedApiError) {
-        if (err.status === 429) {
-          setIsLockedOut(true)
-          setErrorMessage('Account or IP locked due to excessive failed attempts. Please try again later.')
-        } else if (err.status === 401) {
-          setErrorMessage('Invalid username or password. Please verify credentials.')
-        } else {
-          setErrorMessage(err.message || 'Authentication failed. Please verify the backend is running.')
-        }
+      const apiErr = err as NormalizedApiError
+      const status = apiErr?.status
+      if (status === 429) {
+        setIsLockedOut(true)
+        setErrorMessage(
+          apiErr.message ||
+            'Account or IP locked due to excessive failed attempts. Please try again later.'
+        )
+      } else if (status === 401) {
+        setErrorMessage('Invalid username or password. Please verify credentials.')
+      } else if (apiErr?.message) {
+        setErrorMessage(apiErr.message)
       } else {
         setErrorMessage('Unable to reach Gatekeeper authentication service.')
       }
@@ -108,8 +118,8 @@ export const Login: React.FC = () => {
             <div>
               <div className="relative">
                 <Input
-                  label="Username"
-                  placeholder="admin"
+                  label="Username or Email"
+                  placeholder="admin or admin@gatekeeper.local"
                   autoComplete="username"
                   {...register('username')}
                   error={errors.username?.message}

@@ -44,7 +44,7 @@ describe('Login Screen', () => {
     fireEvent.click(submitBtn)
 
     await waitFor(() => {
-      expect(screen.getByText(/Username must be at least 3 characters/i)).toBeInTheDocument()
+      expect(screen.getByText(/Username or email must be at least 3 characters/i)).toBeInTheDocument()
       expect(screen.getByText(/Password must be at least 8 characters/i)).toBeInTheDocument()
     })
   })
@@ -72,7 +72,7 @@ describe('Login Screen', () => {
       </AuthProvider>
     )
 
-    fireEvent.change(screen.getByLabelText(/Username/i), { target: { value: 'admin' } })
+    fireEvent.change(screen.getByLabelText(/Username or Email/i), { target: { value: 'admin' } })
     fireEvent.change(screen.getByLabelText(/Password/i), { target: { value: 'password123' } })
     fireEvent.click(screen.getByRole('button', { name: /Sign In to Gateway/i }))
 
@@ -80,6 +80,41 @@ describe('Login Screen', () => {
       expect(authService.login).toHaveBeenCalledWith({
         username: 'admin',
         password: 'password123',
+      })
+    })
+  })
+
+  it('submits credentials using administrator email address', async () => {
+    vi.mocked(authService.login).mockResolvedValueOnce({
+      accessToken: 'valid-email-token',
+      tokenType: 'Bearer',
+      expiresIn: 3600,
+      expiresAt: '2026-11-18T00:00:00Z',
+      admin: {
+        id: 'uuid-1',
+        username: 'admin',
+        email: 'admin123@gmail.com',
+        role: 'ROLE_SUPER_ADMIN',
+        mustChangePassword: false,
+      },
+    })
+
+    render(
+      <AuthProvider>
+        <MemoryRouter>
+          <Login />
+        </MemoryRouter>
+      </AuthProvider>
+    )
+
+    fireEvent.change(screen.getByLabelText(/Username or Email/i), { target: { value: 'admin123@gmail.com' } })
+    fireEvent.change(screen.getByLabelText(/Password/i), { target: { value: 'ComplexPass123!' } })
+    fireEvent.click(screen.getByRole('button', { name: /Sign In to Gateway/i }))
+
+    await waitFor(() => {
+      expect(authService.login).toHaveBeenCalledWith({
+        username: 'admin123@gmail.com',
+        password: 'ComplexPass123!',
       })
     })
   })
