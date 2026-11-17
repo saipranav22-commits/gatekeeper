@@ -207,4 +207,24 @@ class PolicyAdministrationIntegrationTest {
         PolicyDefinitionDto cleared = adminService.configureShadowVersion(testPolicyKey, null, "admin");
         assertThat(cleared.shadowVersionNumber()).isNull();
     }
+
+    @Test
+    @DisplayName("Safe policy rollback and version restoration across lifecycle")
+    void safePolicyRollbackAndVersionRestoration() {
+        PolicyRule r1 = new PolicyRule("rule-v1", 100, true, null, PolicyAction.ALLOW_CONTINUE, "v1", null, null);
+        PolicyRule r2 = new PolicyRule("rule-v2", 50, true, null, PolicyAction.DENY, "v2", null, null);
+
+        adminService.createVersion(testPolicyKey, new CreatePolicyVersionRequest("v1", List.of(r1)), "admin");
+        adminService.createVersion(testPolicyKey, new CreatePolicyVersionRequest("v2", List.of(r2)), "admin");
+
+        PolicyDefinitionDto act1 = adminService.activateVersion(testPolicyKey, 1, "admin", "Initial v1");
+        assertThat(act1.activeVersionNumber()).isEqualTo(1);
+
+        PolicyDefinitionDto act2 = adminService.activateVersion(testPolicyKey, 2, "admin", "Activate v2");
+        assertThat(act2.activeVersionNumber()).isEqualTo(2);
+
+        // Rollback restores v1 cleanly
+        PolicyDefinitionDto rolledBack = adminService.rollback(testPolicyKey, 1, "admin", "Rollback to v1");
+        assertThat(rolledBack.activeVersionNumber()).isEqualTo(1);
+    }
 }

@@ -25,17 +25,39 @@ function Invoke-SafeRestCall {
     $request.KeepAlive = $false
     $request.Timeout = 15000
 
+    $effectiveContentType = $ContentType
+
     foreach ($k in $Headers.Keys) {
-        $request.Headers.Add($k, [string]$Headers[$k])
+        $val = [string]$Headers[$k]
+        if ($k -ieq "Content-Type") {
+            $effectiveContentType = $val
+        } elseif ($k -ieq "Accept") {
+            $request.Accept = $val
+        } elseif ($k -ieq "User-Agent") {
+            $request.UserAgent = $val
+        } elseif ($k -ieq "Referer") {
+            $request.Referer = $val
+        } elseif ($k -ieq "Host") {
+            $request.Host = $val
+        } elseif ($k -ieq "Expect") {
+            $request.Expect = $val
+        } elseif ($k -ieq "Content-Length") {
+            # Skip manual Content-Length; set automatically when writing body
+        } else {
+            $request.Headers.Add($k, $val)
+        }
     }
 
-    if ($Body -and ($request.Method -eq "POST" -or $request.Method -eq "PUT" -or $request.Method -eq "PATCH")) {
-        $request.ContentType = $ContentType
+    if ($Body -and ($request.Method -eq "POST" -or $request.Method -eq "PUT" -or $request.Method -eq "PATCH" -or $request.Method -eq "DELETE")) {
+        $request.ContentType = $effectiveContentType
         $bytes = [System.Text.Encoding]::UTF8.GetBytes($Body)
         $request.ContentLength = $bytes.Length
         $reqStream = $request.GetRequestStream()
         $reqStream.Write($bytes, 0, $bytes.Length)
         $reqStream.Close()
+    } elseif ($request.Method -eq "POST" -or $request.Method -eq "PUT" -or $request.Method -eq "PATCH") {
+        $request.ContentType = $effectiveContentType
+        $request.ContentLength = 0
     }
 
     try {
@@ -83,9 +105,59 @@ function Invoke-SafeRestCall {
     }
 }
 
+function Restore-PreTestPolicyVersion {
+    param(
+        [string]$BaseUrl,
+        [string]$PolicyKey,
+        [hashtable]$AdminHeaders,
+        [ref]$InitialVersionRef,
+        [ref]$ScriptActivatedVersionRef
+    )
+
+    $initVer = $InitialVersionRef.Value
+    $scriptVer = $ScriptActivatedVersionRef.Value
+
+    if ($null -ne $initVer -and $null -ne $scriptVer) {
+        try {
+            $currDefResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies/$PolicyKey" -Method "Get" -Headers $AdminHeaders
+            if ($currDefResp.StatusCode -eq 200) {
+                $currDef = $currDefResp.Body | ConvertFrom-Json
+                $currActive = if ($null -ne $currDef.activeVersionNumber) { [int]@($currDef.activeVersionNumber)[0] } else { $null }
+
+                if ($currActive -eq $scriptVer -and $currActive -ne $initVer) {
+                    Write-Host "`n  [CLEANUP] Restoring '$PolicyKey' to pre-test active version $initVer (currently: $currActive)..." -ForegroundColor Cyan
+                    $restoreResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies/$PolicyKey/versions/$initVer/activate?reason=Post-verification+safe+restore" -Method "Post" -Headers $AdminHeaders
+                    if ($restoreResp.StatusCode -eq 200) {
+                        $verifyDefResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies/$PolicyKey" -Method "Get" -Headers $AdminHeaders
+                        $verifyDef = $verifyDefResp.Body | ConvertFrom-Json
+                        $restoredNum = if ($null -ne $verifyDef.activeVersionNumber) { [int]@($verifyDef.activeVersionNumber)[0] } else { $null }
+                        if ($restoredNum -eq $initVer) {
+                            Write-Host "  [OK] Successfully restored and verified '$PolicyKey' active version $initVer." -ForegroundColor Green
+                            $ScriptActivatedVersionRef.Value = $null
+                        } else {
+                            Write-Host "  [FAIL] Restored version mismatch: expected $initVer, got $restoredNum" -ForegroundColor Red
+                        }
+                    } else {
+                        Write-Host "  [FAIL] Failed to restore '$PolicyKey' to version $initVer (HTTP $($restoreResp.StatusCode)): $($restoreResp.Body)" -ForegroundColor Red
+                    }
+                } elseif ($currActive -ne $scriptVer) {
+                    Write-Host "`n  [CLEANUP] Active version changed independently (current: $currActive, expected script active: $scriptVer). Preserving current version without overwriting." -ForegroundColor Yellow
+                    $ScriptActivatedVersionRef.Value = $null
+                } else {
+                    $ScriptActivatedVersionRef.Value = $null
+                }
+            }
+        } catch {
+            Write-Host "`n  [WARN] Exception during policy restoration cleanup: $_" -ForegroundColor DarkYellow
+        }
+    }
+}
+
 $servicesStarted = @()
 $createdConsumerId = $null
 $policyKey = "orders-service-v1"
+$initialActiveVersion = $null
+$scriptActivatedVersion = $null
 
 try {
     # ------------------------------------------------------------------------------
@@ -340,11 +412,12 @@ try {
     $activeNum = $null
     if ($null -ne $policyDef) {
         if ($null -ne $policyDef.activeVersionNumber) {
-            $activeNum = @($policyDef.activeVersionNumber)[0]
+            $activeNum = [int]@($policyDef.activeVersionNumber)[0]
         } elseif ($null -ne $policyDef.activeVersion) {
-            $activeNum = @($policyDef.activeVersion)[0]
+            $activeNum = [int]@($policyDef.activeVersion)[0]
         }
     }
+    $initialActiveVersion = $activeNum
     $activeVersionDisplay = if ($null -ne $activeNum) { [string]$activeNum } else { 'none' }
     Write-Host "  [OK] Policy definition verified: key='$policyKey' (Active Version: $activeVersionDisplay)." -ForegroundColor Green
 
@@ -418,6 +491,7 @@ try {
         Write-Host "  [FAIL] Activation failed with HTTP $($actResp.StatusCode): $($actResp.Body)" -ForegroundColor Red
         exit 1
     }
+    $scriptActivatedVersion = $v1Num
     Write-Host "  [OK] Version $v1Num activated atomically. Active version is now $v1Num." -ForegroundColor Green
 
     # ------------------------------------------------------------------------------
@@ -520,6 +594,7 @@ try {
         Write-Host "  [FAIL] Version $v2Num activation failed: HTTP $($actV2Resp.StatusCode)" -ForegroundColor Red
         exit 1
     }
+    $scriptActivatedVersion = $v2Num
     Write-Host "  [OK] Version $v2Num activated. Active version updated to $v2Num." -ForegroundColor Green
 
     # ------------------------------------------------------------------------------
@@ -558,6 +633,7 @@ try {
         Write-Host "  [FAIL] Rollback failed: HTTP $($rollbackResp.StatusCode)" -ForegroundColor Red
         exit 1
     }
+    $scriptActivatedVersion = $v1Num
 
     # Verify DENY behavior is immediately restored on live gateway
     $verifyRollbackResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/proxy/orders" -Method "Post" -Headers $denyHeaders -Body $orderPayload
@@ -580,12 +656,9 @@ try {
     }
     Write-Host "  [OK] Consumer API key blocked from administrative policy APIs (HTTP $($unauthPolicyResp.StatusCode))." -ForegroundColor Green
 
-    # Restore operational ALLOW policy on shared orders route so gateway traffic is unblocked
-    if ($v2Num) {
-        $restoreResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies/$policyKey/versions/$v2Num/activate?reason=Post-verification+allow+restore" -Method "Post" -Headers $adminHeaders
-        if ($restoreResp.StatusCode -eq 200) {
-            Write-Host "  [OK] Operational state restored: Version $v2Num (ALLOW_CONTINUE) re-activated on '$policyKey'." -ForegroundColor Green
-        }
+    # Restore pre-test active policy version on shared orders route
+    if ($null -ne $initialActiveVersion -and $null -ne $scriptActivatedVersion) {
+        Restore-PreTestPolicyVersion -BaseUrl $BaseUrl -PolicyKey $policyKey -AdminHeaders $adminHeaders -InitialVersionRef ([ref]$initialActiveVersion) -ScriptActivatedVersionRef ([ref]$scriptActivatedVersion)
     }
 
     # Clean up test consumer
@@ -600,8 +673,13 @@ try {
     Write-Host "======================================================" -ForegroundColor Green
 
 } finally {
+    # Failure-path: restore pre-test policy version if verification was interrupted or failed
+    if ($null -ne $adminHeaders -and $null -ne $initialActiveVersion -and $null -ne $scriptActivatedVersion) {
+        Restore-PreTestPolicyVersion -BaseUrl $BaseUrl -PolicyKey $policyKey -AdminHeaders $adminHeaders -InitialVersionRef ([ref]$initialActiveVersion) -ScriptActivatedVersionRef ([ref]$scriptActivatedVersion)
+    }
+
     # Failure-path cleanup: delete temporary test consumer
-    if ($createdConsumerId) {
+    if ($createdConsumerId -and $null -ne $adminHeaders) {
         try {
             Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/consumers/$createdConsumerId" -Method "Delete" -Headers $adminHeaders | Out-Null
             Write-Host "  [CLEANUP] Test consumer cleaned up in finally block." -ForegroundColor Gray
