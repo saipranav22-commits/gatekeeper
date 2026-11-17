@@ -213,10 +213,15 @@ class ResilienceIntegrationTest {
             .andExpect(jsonPath("$.circuitState", is("CLOSED")));
 
         // After reset, request is admitted through circuit breaker
-        // (will get 502 since mock upstream isn't live on 8081, but not 503 fast rejection)
+        // (will get 200 if upstream is live on 8081, or 502 if not live, but not 503 fast rejection)
         mockMvc.perform(get("/api/v1/proxy/orders")
                 .header(ConsumerApiKeyAuthenticationFilter.API_KEY_HEADER, consumerApiKey))
-            .andExpect(status().isBadGateway());
+            .andExpect(result -> {
+                int status = result.getResponse().getStatus();
+                org.assertj.core.api.Assertions.assertThat(status)
+                    .as("Expected request to pass through circuit breaker (got 200 or 502, not 503 circuit open)")
+                    .isIn(200, 502);
+            });
     }
 
     @Test

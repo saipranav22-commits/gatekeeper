@@ -10,7 +10,17 @@ import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Evaluates retry safety based on HTTP method idempotency, failure classification,
- * and computes exponential backoff with full jitter.
+ * and computes exponential backoff with bounded symmetric jitter.
+ *
+ * <p>Jitter algorithm:
+ * <pre>
+ *   baseDelay = initialBackoffMs * (multiplier ^ (attempt - 1))
+ *   minDelay = baseDelay * (1.0 - jitterFactor)
+ *   maxDelay = baseDelay * (1.0 + jitterFactor)
+ *   delay = random(minDelay, maxDelay)
+ * </pre>
+ * This provides bounded proportional jitter centered on the exponential backoff curve,
+ * preventing thundering-herd synchronizations without collapsing delays to zero.
  */
 public class RetryPolicy {
 

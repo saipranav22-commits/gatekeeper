@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -13,6 +14,7 @@ import java.io.IOException;
 
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
+@Profile("!prod")
 public class FaultInjectionFilter extends OncePerRequestFilter {
 
     private final FaultSimulationManager faultManager;
@@ -33,6 +35,10 @@ public class FaultInjectionFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
             return;
         }
+
+        // Record incoming attempt
+        String correlationId = request.getHeader("X-Request-Id");
+        faultManager.recordAttempt(correlationId);
 
         try {
             faultManager.applyFault();

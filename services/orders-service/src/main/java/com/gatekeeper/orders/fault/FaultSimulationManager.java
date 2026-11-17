@@ -2,15 +2,20 @@ package com.gatekeeper.orders.fault;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * In-memory fault simulation manager for controlled resilience testing.
+ * Strictly disabled in production profile (!prod).
  */
 @Component
+@Profile("!prod")
 public class FaultSimulationManager {
 
     private static final Logger log = LoggerFactory.getLogger(FaultSimulationManager.class);
@@ -20,6 +25,8 @@ public class FaultSimulationManager {
     private volatile int statusCode = 0;
     private final AtomicInteger remainingFailures = new AtomicInteger(0);
     private final AtomicLong totalFaultsInjected = new AtomicLong(0);
+    private final AtomicLong totalAttemptsReceived = new AtomicLong(0);
+    private final Map<String, AtomicInteger> attemptsByCorrelationId = new ConcurrentHashMap<>();
 
     public synchronized void configure(long delayMs, int statusCode, int failureCount) {
         this.delayMs = delayMs;
@@ -35,7 +42,24 @@ public class FaultSimulationManager {
         this.delayMs = 0L;
         this.statusCode = 0;
         this.remainingFailures.set(0);
+        this.totalFaultsInjected.set(0);
+        this.totalAttemptsReceived.set(0);
+        this.attemptsByCorrelationId.clear();
         log.info("Fault simulation reset to normal operation");
+    }
+
+    public void recordAttempt(String correlationId) {
+        totalAttemptsReceived.incrementAndGet();
+        if (correlationId != null && !correlationId.isBlank()) {
+            attemptsByCorrelationId.computeIfAbsent(correlationId.trim(), k -> new AtomicInteger(0))
+                .incrementAndGet();
+        }
+    }
+
+    public int getAttemptsForCorrelationId(String correlationId) {
+        if (correlationId == null) return 0;
+        AtomicInteger count = attemptsByCorrelationId.get(correlationId.trim());
+        return count != null ? count.get() : 0;
     }
 
     public boolean shouldSimulate() {
@@ -80,5 +104,9 @@ public class FaultSimulationManager {
 
     public long getTotalFaultsInjected() {
         return totalFaultsInjected.get();
+    }
+
+    public long getTotalAttemptsReceived() {
+        return totalAttemptsReceived.get();
     }
 }
