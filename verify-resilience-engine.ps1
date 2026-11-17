@@ -169,15 +169,19 @@ try {
     $password = $null
     if ($env:GATEKEEPER_ADMIN_PASSWORD) {
         $password = $env:GATEKEEPER_ADMIN_PASSWORD
-    } else {
-        $secPass = Read-Host -Prompt "Enter password for '$Username'" -AsSecureString
-        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secPass)
-        $password = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
-        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+    } elseif ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+        try {
+            $secPass = Read-Host -Prompt "Enter password for '$Username'" -AsSecureString
+            $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secPass)
+            $password = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+            [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+        } catch {
+            $password = $null
+        }
     }
 
-    if (-not $password) {
-        Write-Host "  [FAIL] Password cannot be blank." -ForegroundColor Red
+    if ([string]::IsNullOrWhiteSpace($password)) {
+        Write-Host "  [FAIL] Operator credentials unavailable. Set GATEKEEPER_ADMIN_PASSWORD environment variable for automated verification." -ForegroundColor Red
         exit 1
     }
 
@@ -186,19 +190,31 @@ try {
         password = $password
     } | ConvertTo-Json -Compress
 
+    # Clear sensitive plain-text password from variable memory immediately
+    $password = $null
+
     $loginResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/auth/login" -Method "Post" -Body $loginBody
+    $loginBody = $null
+
     if ($loginResp.StatusCode -ne 200) {
-        Write-Host "  [FAIL] Administrator login failed: HTTP $($loginResp.StatusCode)" -ForegroundColor Red
+        if ($loginResp.StatusCode -eq 401) {
+            Write-Host "  [FAIL] Administrator authentication failed (HTTP 401 Unauthorized): Invalid credentials." -ForegroundColor Red
+        } elseif ($loginResp.StatusCode -eq 429) {
+            Write-Host "  [FAIL] Administrator authentication failed (HTTP 429 Too Many Requests): Login protection rate limit or account lockout triggered." -ForegroundColor Red
+        } else {
+            Write-Host "  [FAIL] Administrator login failed with HTTP $($loginResp.StatusCode)." -ForegroundColor Red
+        }
         exit 1
     }
 
     $loginJson = $loginResp.Body | ConvertFrom-Json
-    $adminToken = $loginJson.token
-    if (-not $adminToken) {
-        Write-Host "  [FAIL] Token was missing from login response." -ForegroundColor Red
+    # Standard Gatekeeper auth contract exposes accessToken in LoginResponse
+    $adminToken = if ($loginJson.accessToken) { [string]$loginJson.accessToken } else { [string]$loginJson.token }
+    if ([string]::IsNullOrWhiteSpace($adminToken)) {
+        Write-Host "  [FAIL] Response contract mismatch: 'accessToken' was missing or empty in login response." -ForegroundColor Red
         exit 1
     }
-    Write-Host "  [OK] Admin authenticated. Token received." -ForegroundColor Green
+    Write-Host "  [OK] Admin authenticated successfully (HTTP 200). JWT access token acquired." -ForegroundColor Green
     $adminHeaders = @{ "Authorization" = "Bearer $adminToken" }
 
     # ------------------------------------------------------------------------------
@@ -324,10 +340,10 @@ try {
     Invoke-SafeRestCall -Uri "$OrdersUrl/fault/configure" -Method "Post" -Body $faultConfig | Out-Null
 
     $postOrderBody = @{
-        customerId = $createdConsumerId
-        sku        = "SKU-TEST-RESILIENCE"
+        consumerId = [string]$createdConsumerId
+        itemSku    = "SKU-TEST-RESILIENCE"
         quantity   = 1
-        unitPrice  = 99.99
+        totalPrice = 99.99
     } | ConvertTo-Json -Compress
 
     $postReq = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/proxy/orders" -Method "Post" -Headers $gatewayHeaders -Body $postOrderBody
