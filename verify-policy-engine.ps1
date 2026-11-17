@@ -94,6 +94,7 @@ try {
     Write-Host "`n[1/16] Verifying Services Availability..." -ForegroundColor Yellow
 
     # Check Gatekeeper Backend
+    $gwJar = "D:\Development\Gatekeeper\backend\target\gatekeeper-backend-0.0.1-SNAPSHOT.jar"
     $gwUp = $false
     try {
         $gwHealth = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/health" -Method "Get"
@@ -102,9 +103,40 @@ try {
         $gwUp = $false
     }
 
-    if (-not $gwUp) {
-        Write-Host "  Gatekeeper backend not detected on port 8080. Starting background process..." -ForegroundColor Cyan
-        $gwJar = "D:\Development\Gatekeeper\backend\target\gatekeeper-backend-0.0.1-SNAPSHOT.jar"
+    if ($gwUp) {
+        # Check if already running backend exposes policy endpoint (must return 401 unauthenticated, NOT 404)
+        $probePolicy = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies" -Method "Get"
+        if ($probePolicy.StatusCode -eq 404) {
+            Write-Host "  [FAIL] Running backend on port 8080 is an outdated build missing policy endpoints (HTTP 404)." -ForegroundColor Red
+            Write-Host "  Please stop the outdated process on port 8080 and rerun this verification script." -ForegroundColor Red
+            exit 1
+        }
+        Write-Host "  [OK] Gatekeeper backend is running and exposes policy engine." -ForegroundColor Green
+    } else {
+        # Verify backend JAR exists and contains PolicyAdminController
+        if (-not (Test-Path $gwJar)) {
+            Write-Host "  [FAIL] Backend JAR not found at $gwJar. Please package using 'mvn clean package -DskipTests'." -ForegroundColor Red
+            exit 1
+        }
+
+        [System.Reflection.Assembly]::LoadWithPartialName("System.IO.Compression.FileSystem") | Out-Null
+        $hasPolicyClass = $false
+        try {
+            $zip = [System.IO.Compression.ZipFile]::OpenRead($gwJar)
+            $entry = $zip.GetEntry("BOOT-INF/classes/com/gatekeeper/policy/controller/PolicyAdminController.class")
+            if ($null -ne $entry) { $hasPolicyClass = $true }
+            $zip.Dispose()
+        } catch {
+            $hasPolicyClass = $false
+        }
+
+        if (-not $hasPolicyClass) {
+            Write-Host "  [FAIL] Backend JAR at $gwJar is stale: missing PolicyAdminController.class." -ForegroundColor Red
+            Write-Host "  Please package the latest source using 'mvn clean package -DskipTests'." -ForegroundColor Red
+            exit 1
+        }
+
+        Write-Host "  Gatekeeper backend not detected on port 8080. Starting verified background process..." -ForegroundColor Cyan
         $gwProc = Start-Process -FilePath "java" -ArgumentList "-jar", $gwJar, "--spring.profiles.active=local" -PassThru -WindowStyle Hidden
         $servicesStarted += $gwProc
         $retries = 35
@@ -116,13 +148,20 @@ try {
             } catch {}
             $retries--
         }
-    }
 
-    if (-not $gwUp) {
-        Write-Host "  [FAIL] Gatekeeper backend failed to respond on port 8080." -ForegroundColor Red
-        exit 1
+        if (-not $gwUp) {
+            Write-Host "  [FAIL] Gatekeeper backend failed to respond on port 8080 within timeout." -ForegroundColor Red
+            exit 1
+        }
+
+        # Verify endpoint registration (unauthenticated request to /api/v1/policies must return 401, not 404)
+        $policyEndpointCheck = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies" -Method "Get"
+        if ($policyEndpointCheck.StatusCode -eq 404) {
+            Write-Host "  [FAIL] Started backend on port 8080 does not expose /api/v1/policies (HTTP 404)." -ForegroundColor Red
+            exit 1
+        }
+        Write-Host "  [OK] Gatekeeper backend is healthy and policy endpoint verified on port 8080." -ForegroundColor Green
     }
-    Write-Host "  [OK] Gatekeeper backend is healthy on port 8080." -ForegroundColor Green
 
     # Check Orders Service
     $ordersUp = $false
