@@ -387,4 +387,32 @@ class PolicyGatewayEnforcementIntegrationTest {
             }
         }
     }
+
+    @Test
+    @DisplayName("Audit Trail: GET /api/v1/policies/{policyKey}/audit returns chronological activation history")
+    void policyActivationAuditTrailEndpoint() throws Exception {
+        String testPolicy = "audit-test-" + UUID.randomUUID().toString().substring(0, 8);
+        policyAdminService.createDefinition(new CreatePolicyDefinitionRequest(testPolicy, "Audit Test", "Audit policy"));
+
+        PolicyRule r1 = new PolicyRule("rule-1", 100, true, null, PolicyAction.ALLOW_CONTINUE, "r1", null, null);
+        PolicyRule r2 = new PolicyRule("rule-2", 50, true, null, PolicyAction.DENY, "r2", null, null);
+
+        PolicyVersionDto v1 = policyAdminService.createVersion(testPolicy, new CreatePolicyVersionRequest("v1", List.of(r1)), "admin");
+        policyAdminService.activateVersion(testPolicy, v1.versionNumber(), "admin", "Activate v1");
+
+        PolicyVersionDto v2 = policyAdminService.createVersion(testPolicy, new CreatePolicyVersionRequest("v2", List.of(r2)), "admin");
+        policyAdminService.activateVersion(testPolicy, v2.versionNumber(), "admin", "Activate v2");
+
+        // Query audit endpoint via MockMvc
+        mockMvc.perform(get("/api/v1/policies/" + testPolicy + "/audit")
+                .header("Authorization", "Bearer " + adminToken))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$").isArray())
+            .andExpect(jsonPath("$.length()").value(2))
+            .andExpect(jsonPath("$[0].versionNumber").value(2))
+            .andExpect(jsonPath("$[0].action").value("ACTIVATED"))
+            .andExpect(jsonPath("$[0].actor").value("admin"))
+            .andExpect(jsonPath("$[1].versionNumber").value(1))
+            .andExpect(jsonPath("$[1].action").value("ACTIVATED"));
+    }
 }

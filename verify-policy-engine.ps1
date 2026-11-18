@@ -635,18 +635,62 @@ try {
     # ------------------------------------------------------------------------------
     # 14. Query Activation Audit Trail
     # ------------------------------------------------------------------------------
-    Write-Host "`n[14/16] Querying Policy Activation Audit Trail..." -ForegroundColor Yellow
+    Write-Host "`n[14/16] Querying Policy Activation Audit Trail for '$policyKey'..." -ForegroundColor Yellow
     $auditsResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies/$policyKey/audit" -Method "Get" -Headers $adminHeaders
     if ($auditsResp.StatusCode -ne 200) {
         Write-Host "  [FAIL] Failed to retrieve audits: HTTP $($auditsResp.StatusCode)" -ForegroundColor Red
         exit 1
     }
-    $audits = @($auditsResp.Body | ConvertFrom-Json)
+
+    # Safely unroll deserialized audit records in PowerShell 5.1 (supporting both raw array and Spring Page object)
+    $auditsRaw = $auditsResp.Body | ConvertFrom-Json
+    $itemsToProcess = $auditsRaw
+    if ($null -ne $auditsRaw -and $null -ne $auditsRaw.content) {
+        $itemsToProcess = $auditsRaw.content
+    }
+
+    $audits = @()
+    if ($null -ne $itemsToProcess) {
+        if ($itemsToProcess -is [System.Collections.IEnumerable] -and $itemsToProcess -isnot [string]) {
+            foreach ($entry in $itemsToProcess) {
+                $audits += $entry
+            }
+        } else {
+            $audits += $itemsToProcess
+        }
+    }
+
     if ($audits.Count -lt 2) {
         Write-Host "  [FAIL] Expected at least 2 audit entries, found $($audits.Count)." -ForegroundColor Red
         exit 1
     }
-    Write-Host "  [OK] Immutable audit trail verified: $($audits.Count) activation records found with actor '$Username'." -ForegroundColor Green
+
+    # Verify exact activation events generated during this verification run
+    $v1AuditEvent = $audits | Where-Object {
+        [int]$_.versionNumber -eq [int]$v1Num -and
+        $_.action -eq "ACTIVATED" -and
+        ($null -eq $_.policyKey -or $_.policyKey -eq $policyKey)
+    } | Select-Object -First 1
+
+    $v2AuditEvent = $audits | Where-Object {
+        [int]$_.versionNumber -eq [int]$v2Num -and
+        $_.action -eq "ACTIVATED" -and
+        ($null -eq $_.policyKey -or $_.policyKey -eq $policyKey)
+    } | Select-Object -First 1
+
+    if ($null -eq $v1AuditEvent) {
+        Write-Host "  [FAIL] Audit trail missing activation event for version $v1Num on '$policyKey'." -ForegroundColor Red
+        exit 1
+    }
+
+    if ($null -eq $v2AuditEvent) {
+        Write-Host "  [FAIL] Audit trail missing activation event for version $v2Num on '$policyKey'." -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host "  [OK] Immutable audit trail verified: $($audits.Count) total records." -ForegroundColor Green
+    Write-Host "  [OK] Confirmed Version $v1Num activation: Action=$($v1AuditEvent.action), Actor=$($v1AuditEvent.actor), PrevVersion=$($v1AuditEvent.previousVersionNumber)." -ForegroundColor Green
+    Write-Host "  [OK] Confirmed Version $v2Num activation: Action=$($v2AuditEvent.action), Actor=$($v2AuditEvent.actor), PrevVersion=$($v2AuditEvent.previousVersionNumber)." -ForegroundColor Green
 
     # ------------------------------------------------------------------------------
     # 15. Transactional Rollback to Version 1
