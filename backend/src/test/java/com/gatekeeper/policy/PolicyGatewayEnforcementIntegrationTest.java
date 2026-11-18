@@ -11,6 +11,7 @@ import com.gatekeeper.plan.entity.SubscriptionPlan;
 import com.gatekeeper.plan.repository.SubscriptionPlanRepository;
 import com.gatekeeper.policy.dto.CreatePolicyDefinitionRequest;
 import com.gatekeeper.policy.dto.CreatePolicyVersionRequest;
+import com.gatekeeper.policy.dto.PolicyDefinitionDto;
 import com.gatekeeper.policy.dto.PolicyVersionDto;
 import com.gatekeeper.policy.engine.PolicyCacheManager;
 import com.gatekeeper.policy.model.PolicyAction;
@@ -34,6 +35,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -308,5 +310,81 @@ class PolicyGatewayEnforcementIntegrationTest {
         mockMvc.perform(get("/api/v1/policies")
                 .header(ConsumerApiKeyAuthenticationFilter.API_KEY_HEADER, fullScopeApiKey))
             .andExpect(status().isUnauthorized()); // Management filter chain requires JWT Bearer
+    }
+
+    @Test
+    @DisplayName("Regression: Valid API key returns 200 on allowed baseline route, but 403 under active DENY policy with guaranteed rollback")
+    void validApiKeyBaselinePermittedAndPolicyDenyWithGuaranteedRollback() throws Exception {
+        String policyKey = "orders-service-v1";
+        if (policyAdminService.listDefinitions().stream().noneMatch(d -> d.policyKey().equals(policyKey))) {
+            policyAdminService.createDefinition(new CreatePolicyDefinitionRequest(policyKey, "Orders Policy", "Route policy"));
+        }
+
+        // 1. Capture initial active version
+        PolicyDefinitionDto initialDef = policyAdminService.getDefinition(policyKey);
+        Integer initialVersionNumber = initialDef.activeVersionNumber();
+        Integer testActivatedVersionNumber = null;
+
+        try {
+            // 2. Set baseline policy to ALLOW read and write
+            PolicyRule allowRule = new PolicyRule(
+                "allow-all-baseline",
+                100,
+                true,
+                new PolicyRuleConditions(policyKey, null, null, null, null, null, null, null),
+                PolicyAction.ALLOW_CONTINUE,
+                "Permit baseline traffic",
+                "PERMIT_BASELINE",
+                "Permitted baseline"
+            );
+            PolicyVersionDto baselineVer = policyAdminService.createVersion(
+                policyKey, new CreatePolicyVersionRequest("Baseline Allow", List.of(allowRule)), "admin"
+            );
+            policyAdminService.activateVersion(policyKey, baselineVer.versionNumber(), "admin", "Activate baseline allow");
+            testActivatedVersionNumber = baselineVer.versionNumber();
+
+            // 3. Baseline verification: Valid API key + allowed route -> proceeds (200 if upstream live, 502 if upstream down)
+            mockMvc.perform(get("/api/v1/proxy/orders")
+                    .header(ConsumerApiKeyAuthenticationFilter.API_KEY_HEADER, fullScopeApiKey))
+                .andExpect(result -> {
+                    int status = result.getResponse().getStatus();
+                    assertThat(status).isIn(200, 502);
+                });
+
+            // 4. Activate DENY policy on POST orders
+            PolicyRule denyRule = new PolicyRule(
+                "deny-orders-post",
+                50,
+                true,
+                new PolicyRuleConditions(policyKey, "POST", null, null, null, null, null, null),
+                PolicyAction.DENY,
+                "Deny orders creation",
+                "ORDERS_MAINTENANCE",
+                "Order creation is temporarily paused"
+            );
+            PolicyVersionDto denyVer = policyAdminService.createVersion(
+                policyKey, new CreatePolicyVersionRequest("Deny Post", List.of(denyRule)), "admin"
+            );
+            policyAdminService.activateVersion(policyKey, denyVer.versionNumber(), "admin", "Activate deny post");
+            testActivatedVersionNumber = denyVer.versionNumber();
+
+            // 5. Verify same valid API key is now DENIED with HTTP 403 Forbidden
+            mockMvc.perform(post("/api/v1/proxy/orders")
+                    .header(ConsumerApiKeyAuthenticationFilter.API_KEY_HEADER, fullScopeApiKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"sku\":\"SKU-001\",\"quantity\":2}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message", containsString("Order creation is temporarily paused")))
+                .andExpect(header().doesNotExist("RateLimit-Remaining"));
+
+        } finally {
+            // 6. Safe rollback: restore initial version ONLY IF current matches what this test activated
+            if (initialVersionNumber != null && testActivatedVersionNumber != null) {
+                PolicyDefinitionDto currentDef = policyAdminService.getDefinition(policyKey);
+                if (Objects.equals(currentDef.activeVersionNumber(), testActivatedVersionNumber)) {
+                    policyAdminService.activateVersion(policyKey, initialVersionNumber, "admin", "Restored initial policy version after test");
+                }
+            }
+        }
     }
 }

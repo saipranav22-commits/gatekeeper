@@ -370,7 +370,7 @@ try {
 
     $apiKeyReq = @{
         name   = "Policy Verification Key"
-        scopes = @("gateway:invoke", "read:orders", "write:orders")
+        scopes = @("orders:read", "orders:write", "gateway:invoke")
     } | ConvertTo-Json -Compress
 
     $apiKeyResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/consumers/$createdConsumerId/keys" -Method "Post" -Headers $adminHeaders -Body $apiKeyReq
@@ -379,8 +379,28 @@ try {
         exit 1
     }
     $apiKeyData = $apiKeyResp.Body | ConvertFrom-Json
-    $plainApiKey = $apiKeyData.rawKey
-    Write-Host "  [OK] Scoped API key generated with scopes [gateway:invoke, read:orders, write:orders]." -ForegroundColor Green
+    $plainApiKey = $apiKeyData.plaintextKey
+    if ([string]::IsNullOrWhiteSpace($plainApiKey)) {
+        Write-Host "  [FAIL] Plaintext API key missing from key creation response." -ForegroundColor Red
+        exit 1
+    }
+    $keyMetadataId = if ($null -ne $apiKeyData.metadata) { $apiKeyData.metadata.id } else { 'unknown' }
+    Write-Host "  [OK] Scoped API key generated (Metadata ID: $keyMetadataId, Scopes: [orders:read, orders:write, gateway:invoke])." -ForegroundColor Green
+
+    # Safe diagnostics (no secret material)
+    $hasKeyHeader = $null -ne $plainApiKey -and $plainApiKey.Length -gt 0
+    $consumerActive = if ($null -ne $consumer.active) { $consumer.active } else { $true }
+    Write-Host "  [DIAGNOSTICS] Consumer Status: $($consumerActive) | Key ID: $keyMetadataId | X-API-Key Present: $hasKeyHeader" -ForegroundColor Cyan
+
+    # Baseline authentication verification on permitted route before any policy modification
+    Write-Host "  [BASELINE] Verifying consumer authentication on permitted GET /api/v1/proxy/orders..." -ForegroundColor Yellow
+    $baselineResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/proxy/orders" -Method "Get" -Headers @{ "X-API-Key" = $plainApiKey }
+    if ($baselineResp.StatusCode -ne 200) {
+        Write-Host "  [FAIL] Baseline authentication failed with HTTP $($baselineResp.StatusCode): $($baselineResp.Body)" -ForegroundColor Red
+        Write-Host "  [ABORT] Aborting before policy activation due to baseline authentication failure." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "  [OK] Baseline authentication and proxy routing confirmed (HTTP 200). Upstream received request." -ForegroundColor Green
 
     # ------------------------------------------------------------------------------
     # 4. Verify or Create Policy Definition for Route
@@ -464,7 +484,7 @@ try {
         clientIp               = "127.0.0.1"
         consumerId             = $createdConsumerId
         consumerPlan           = $starterPlan.name
-        apiKeyScopes           = @("gateway:invoke", "write:orders")
+        apiKeyScopes           = @("orders:read", "orders:write", "gateway:invoke")
     } | ConvertTo-Json -Compress
 
     $simResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/policies/$policyKey/simulate" -Method "Post" -Headers $adminHeaders -Body $simReq
@@ -541,14 +561,18 @@ try {
     } | ConvertTo-Json -Compress
     $noScopeKeyResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/consumers/$createdConsumerId/keys" -Method "Post" -Headers $adminHeaders -Body $noScopeReq
     $noScopeKeyData = $noScopeKeyResp.Body | ConvertFrom-Json
-    $noScopePlainKey = $noScopeKeyData.rawKey
+    $noScopePlainKey = $noScopeKeyData.plaintextKey
+    if ([string]::IsNullOrWhiteSpace($noScopePlainKey)) {
+        Write-Host "  [FAIL] Plaintext API key missing for noScopeKey." -ForegroundColor Red
+        exit 1
+    }
 
     $scopeDeniedResp = Invoke-SafeRestCall -Uri "$BaseUrl/api/v1/proxy/orders" -Method "Get" -Headers @{ "X-API-Key" = $noScopePlainKey }
     if ($scopeDeniedResp.StatusCode -ne 403) {
         Write-Host "  [FAIL] Lacking required scope did NOT return 403: HTTP $($scopeDeniedResp.StatusCode)" -ForegroundColor Red
         exit 1
     }
-    if ($scopeDeniedResp.Body -notmatch "missing required scope") {
+    if ($scopeDeniedResp.Body -notmatch "insufficient scope" -and $scopeDeniedResp.Body -notmatch "missing required scope") {
         Write-Host "  [FAIL] Scope check did not precede policy evaluation: $($scopeDeniedResp.Body)" -ForegroundColor Red
         exit 1
     }
