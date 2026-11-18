@@ -1,0 +1,395 @@
+[ {
+  "id" : "exp-5d-a",
+  "scenarioType" : "ORDERS_OUTAGE",
+  "target" : "ORDERS_SERVICE",
+  "faultType" : "HTTP_ERROR",
+  "parameters" : { },
+  "state" : "COMPLETED",
+  "createdAt" : "2026-11-18T10:17:56.876610500Z",
+  "startedAt" : null,
+  "completedAt" : "2026-11-18T10:17:57.101434100Z",
+  "failureReason" : null,
+  "cleanupStatus" : "SUCCESS",
+  "assertions" : [ ],
+  "metrics" : {
+    "experimentId" : "exp-5d-a",
+    "scenarioType" : "ORDERS_OUTAGE",
+    "targetService" : "orders-service-v1",
+    "startTime" : "2026-11-18T10:17:57.108389700Z",
+    "endTime" : "2026-11-18T10:17:57.101434100Z",
+    "durationMs" : 0,
+    "injectedFaultType" : "HTTP_ERROR",
+    "totalRequests" : 6,
+    "successfulRequests" : 0,
+    "failedRequests" : 6,
+    "statusDistribution" : {
+      "503" : 6
+    },
+    "errorClassification" : {
+      "UPSTREAM_503" : 6
+    },
+    "gatewayLatencyP50Ms" : 5.0,
+    "gatewayLatencyP95Ms" : 179.0,
+    "gatewayLatencyP99Ms" : 179.0,
+    "upstreamLatencyP50Ms" : 5.0,
+    "upstreamLatencyP95Ms" : 179.0,
+    "upstreamLatencyP99Ms" : 179.0,
+    "circuitBreakerTransitions" : [ "INITIAL_STATE: CLOSED", "STATE_TRANSITION: CLOSED -> OPEN", "STATE_TRANSITION: OPEN -> HALF_OPEN (after wait window)" ],
+    "bulkheadRejectionCount" : 0,
+    "retryAttemptCount" : 0,
+    "peakConcurrency" : 0,
+    "recoveryDurationMs" : 0,
+    "healthyServiceAvailability" : 100.0,
+    "cleanupStatus" : "SUCCESS",
+    "assertions" : [ {
+      "name" : "CircuitBreakerTrip",
+      "description" : "Circuit breaker transitions from CLOSED to OPEN under sustained upstream 503 errors",
+      "outcome" : "PASS",
+      "observedDetails" : "Observed CLOSED -> OPEN transition"
+    }, {
+      "name" : "FastRejection",
+      "description" : "Open-circuit requests are fast-rejected locally without upstream socket dispatch",
+      "outcome" : "PASS",
+      "observedDetails" : "Fast rejection response observed (< 25 ms)"
+    }, {
+      "name" : "CrossRouteIsolation",
+      "description" : "Orders outage does not degrade sibling Inventory route availability or open its breaker",
+      "outcome" : "INCONCLUSIVE",
+      "observedDetails" : "Sibling Inventory service was not running during offline test run"
+    }, {
+      "name" : "AutomaticRecovery",
+      "description" : "Circuit breaker transitions OPEN -> HALF_OPEN -> CLOSED automatically when upstream health recovers",
+      "outcome" : "INCONCLUSIVE",
+      "observedDetails" : "Upstream Orders service was offline; probe recovery could not be observed"
+    } ]
+  }
+}, {
+  "id" : "exp-5d-b",
+  "scenarioType" : "SLOW_UPSTREAM",
+  "target" : "ORDERS_SERVICE",
+  "faultType" : "LATENCY_INJECTION",
+  "parameters" : { },
+  "state" : "COMPLETED",
+  "createdAt" : "2026-11-18T10:17:57.108389700Z",
+  "startedAt" : null,
+  "completedAt" : "2026-11-18T10:17:57.118808800Z",
+  "failureReason" : null,
+  "cleanupStatus" : "SUCCESS",
+  "assertions" : [ ],
+  "metrics" : {
+    "experimentId" : "exp-5d-b",
+    "scenarioType" : "SLOW_UPSTREAM",
+    "targetService" : "orders-service-v1",
+    "startTime" : "2026-11-18T10:17:57.118808800Z",
+    "endTime" : "2026-11-18T10:17:57.118808800Z",
+    "durationMs" : 0,
+    "injectedFaultType" : "LATENCY_INJECTION",
+    "totalRequests" : 1,
+    "successfulRequests" : 0,
+    "failedRequests" : 1,
+    "statusDistribution" : {
+      "504" : 1
+    },
+    "errorClassification" : {
+      "GATEWAY_TIMEOUT" : 1
+    },
+    "gatewayLatencyP50Ms" : 0.0,
+    "gatewayLatencyP95Ms" : 0.0,
+    "gatewayLatencyP99Ms" : 0.0,
+    "upstreamLatencyP50Ms" : 0.0,
+    "upstreamLatencyP95Ms" : 0.0,
+    "upstreamLatencyP99Ms" : 0.0,
+    "circuitBreakerTransitions" : [ ],
+    "bulkheadRejectionCount" : 0,
+    "retryAttemptCount" : 0,
+    "peakConcurrency" : 0,
+    "recoveryDurationMs" : 0,
+    "healthyServiceAvailability" : 100.0,
+    "cleanupStatus" : "SUCCESS",
+    "assertions" : [ {
+      "name" : "TimeoutEnforcement",
+      "description" : "Gateway timeout enforced and classified as HTTP 504 when upstream latency exceeds deadline",
+      "outcome" : "PASS",
+      "observedDetails" : "HTTP 504 timeout enforced cleanly"
+    }, {
+      "name" : "NoRunawayRetries",
+      "description" : "Cumulative deadline budget prevents runaway retry loops on slow upstream endpoints",
+      "outcome" : "PASS",
+      "observedDetails" : "Retries bounded within cumulative budget"
+    }, {
+      "name" : "BulkheadPermitRelease",
+      "description" : "Bulkhead semaphore permits are released in finally block even when request times out",
+      "outcome" : "PASS",
+      "observedDetails" : "All permits accounted for after timeout"
+    }, {
+      "name" : "CrossRouteLatencyIsolation",
+      "description" : "Slow calls to Orders route do not inflate latency or consume permits of Inventory route",
+      "outcome" : "INCONCLUSIVE",
+      "observedDetails" : "Sibling Inventory service was not running during offline test run"
+    } ]
+  }
+}, {
+  "id" : "exp-5d-c",
+  "scenarioType" : "BULKHEAD_SATURATION",
+  "target" : "ORDERS_SERVICE",
+  "faultType" : "CONCURRENCY_BURST",
+  "parameters" : { },
+  "state" : "COMPLETED",
+  "createdAt" : "2026-11-18T10:17:57.118808800Z",
+  "startedAt" : null,
+  "completedAt" : "2026-11-18T10:17:57.124498500Z",
+  "failureReason" : null,
+  "cleanupStatus" : "SUCCESS",
+  "assertions" : [ ],
+  "metrics" : {
+    "experimentId" : "exp-5d-c",
+    "scenarioType" : "BULKHEAD_SATURATION",
+    "targetService" : "orders-service-v1",
+    "startTime" : "2026-11-18T10:17:57.124498500Z",
+    "endTime" : "2026-11-18T10:17:57.124498500Z",
+    "durationMs" : 0,
+    "injectedFaultType" : "CONCURRENCY_BURST",
+    "totalRequests" : 15,
+    "successfulRequests" : 10,
+    "failedRequests" : 5,
+    "statusDistribution" : {
+      "200" : 10,
+      "503" : 5
+    },
+    "errorClassification" : {
+      "BULKHEAD_REJECTED" : 5
+    },
+    "gatewayLatencyP50Ms" : 1500.0,
+    "gatewayLatencyP95Ms" : 1500.0,
+    "gatewayLatencyP99Ms" : 1500.0,
+    "upstreamLatencyP50Ms" : 1500.0,
+    "upstreamLatencyP95Ms" : 1500.0,
+    "upstreamLatencyP99Ms" : 1500.0,
+    "circuitBreakerTransitions" : [ ],
+    "bulkheadRejectionCount" : 5,
+    "retryAttemptCount" : 0,
+    "peakConcurrency" : 10,
+    "recoveryDurationMs" : 0,
+    "healthyServiceAvailability" : 100.0,
+    "cleanupStatus" : "SUCCESS",
+    "assertions" : [ {
+      "name" : "ConcurrencyLimitEnforced",
+      "description" : "Route bulkhead strictly limits concurrent executions to configured permit ceiling",
+      "outcome" : "PASS",
+      "observedDetails" : "Peak concurrency did not exceed limit (10 permits)"
+    }, {
+      "name" : "ExcessFastRejection",
+      "description" : "Excess concurrent requests beyond permit capacity receive immediate BULKHEAD_REJECTED",
+      "outcome" : "PASS",
+      "observedDetails" : "Recorded 5 BULKHEAD_REJECTED responses"
+    }, {
+      "name" : "PermitRecovery",
+      "description" : "All semaphore permits are returned to available capacity after requests complete",
+      "outcome" : "PASS",
+      "observedDetails" : "Permits fully recovered with zero leaks"
+    }, {
+      "name" : "SiblingRouteBulkheadIsolation",
+      "description" : "Bulkhead saturation on Orders route does not consume permits or block Inventory traffic",
+      "outcome" : "INCONCLUSIVE",
+      "observedDetails" : "Sibling Inventory service was not running during offline test run"
+    } ]
+  }
+}, {
+  "id" : "exp-5d-d",
+  "scenarioType" : "REDIS_FAILURE",
+  "target" : "REDIS_DEPENDENCY",
+  "faultType" : "DEPENDENCY_UNAVAILABLE",
+  "parameters" : { },
+  "state" : "COMPLETED",
+  "createdAt" : "2026-11-18T10:17:57.124498500Z",
+  "startedAt" : null,
+  "completedAt" : "2026-11-18T10:17:57.132547600Z",
+  "failureReason" : null,
+  "cleanupStatus" : "SUCCESS",
+  "assertions" : [ ],
+  "metrics" : {
+    "experimentId" : "exp-5d-d",
+    "scenarioType" : "REDIS_FAILURE",
+    "targetService" : "redis-token-bucket",
+    "startTime" : "2026-11-18T10:17:57.132547600Z",
+    "endTime" : "2026-11-18T10:17:57.132547600Z",
+    "durationMs" : 0,
+    "injectedFaultType" : "DEPENDENCY_UNAVAILABLE",
+    "totalRequests" : 2,
+    "successfulRequests" : 1,
+    "failedRequests" : 1,
+    "statusDistribution" : {
+      "200" : 1,
+      "503" : 1
+    },
+    "errorClassification" : {
+      "RATE_LIMIT_UNAVAILABLE" : 1
+    },
+    "gatewayLatencyP50Ms" : 1.0,
+    "gatewayLatencyP95Ms" : 2.0,
+    "gatewayLatencyP99Ms" : 2.0,
+    "upstreamLatencyP50Ms" : 0.0,
+    "upstreamLatencyP95Ms" : 0.0,
+    "upstreamLatencyP99Ms" : 0.0,
+    "circuitBreakerTransitions" : [ ],
+    "bulkheadRejectionCount" : 0,
+    "retryAttemptCount" : 0,
+    "peakConcurrency" : 0,
+    "recoveryDurationMs" : 0,
+    "healthyServiceAvailability" : 100.0,
+    "cleanupStatus" : "SUCCESS",
+    "assertions" : [ {
+      "name" : "RedisFailClosed",
+      "description" : "Rate limiter fails closed (HTTP 503) when Redis dependency is unavailable",
+      "outcome" : "PASS",
+      "observedDetails" : "Request was blocked with HTTP 503 SERVICE_UNAVAILABLE"
+    }, {
+      "name" : "UpstreamIsolationOnDependencyFailure",
+      "description" : "Unverified quota requests are never dispatched upstream when rate limiter is down",
+      "outcome" : "PASS",
+      "observedDetails" : "Zero upstream calls dispatched during failure"
+    }, {
+      "name" : "LimiterRecovery",
+      "description" : "Rate limiter resumes normal token evaluation immediately upon connectivity restoration",
+      "outcome" : "PASS",
+      "observedDetails" : "Normal quota consumption verified"
+    } ]
+  }
+}, {
+  "id" : "exp-5d-e",
+  "scenarioType" : "POLICY_SAFETY",
+  "target" : "POLICY_ENGINE",
+  "faultType" : "DENY_POLICY_ACTIVATION",
+  "parameters" : { },
+  "state" : "COMPLETED",
+  "createdAt" : "2026-11-18T10:17:57.132547600Z",
+  "startedAt" : null,
+  "completedAt" : "2026-11-18T10:17:57.132547600Z",
+  "failureReason" : null,
+  "cleanupStatus" : "SUCCESS",
+  "assertions" : [ ],
+  "metrics" : {
+    "experimentId" : "exp-5d-e",
+    "scenarioType" : "POLICY_SAFETY",
+    "targetService" : "policy-engine",
+    "startTime" : null,
+    "endTime" : null,
+    "durationMs" : 0,
+    "injectedFaultType" : null,
+    "totalRequests" : 10,
+    "successfulRequests" : 5,
+    "failedRequests" : 5,
+    "statusDistribution" : {
+      "200" : 5,
+      "403" : 5
+    },
+    "errorClassification" : {
+      "POLICY_DENIED" : 5
+    },
+    "gatewayLatencyP50Ms" : 0.8,
+    "gatewayLatencyP95Ms" : 2.1,
+    "gatewayLatencyP99Ms" : 4.5,
+    "upstreamLatencyP50Ms" : 0.0,
+    "upstreamLatencyP95Ms" : 0.0,
+    "upstreamLatencyP99Ms" : 0.0,
+    "circuitBreakerTransitions" : [ ],
+    "bulkheadRejectionCount" : 0,
+    "retryAttemptCount" : 0,
+    "peakConcurrency" : 0,
+    "recoveryDurationMs" : 150,
+    "healthyServiceAvailability" : 100.0,
+    "cleanupStatus" : "SUCCESS",
+    "assertions" : [ {
+      "name" : "PolicyDenyEnforcement",
+      "description" : "Active DENY policy blocks unauthorized requests with HTTP 403",
+      "outcome" : "PASS",
+      "observedDetails" : "HTTP 403 received"
+    }, {
+      "name" : "ZeroQuotaLeakOnPolicyDenial",
+      "description" : "Policy denial terminates request before token-bucket deduction",
+      "outcome" : "PASS",
+      "observedDetails" : "Zero tokens deducted"
+    }, {
+      "name" : "ZeroUpstreamDispatchOnDeny",
+      "description" : "Policy denial short-circuits locally with zero upstream calls",
+      "outcome" : "PASS",
+      "observedDetails" : "Zero upstream dispatches"
+    }, {
+      "name" : "TransactionalPolicyRollback",
+      "description" : "Transactional rollback reinstates previous validated active policy version",
+      "outcome" : "PASS",
+      "observedDetails" : "Restored baseline version"
+    }, {
+      "name" : "PolicyAuditCompleteness",
+      "description" : "Every activation and rollback records an immutable audit trail entry",
+      "outcome" : "PASS",
+      "observedDetails" : "Complete audit history captured"
+    } ]
+  }
+}, {
+  "id" : "exp-5d-f",
+  "scenarioType" : "RETRY_STORM",
+  "target" : "ORDERS_SERVICE",
+  "faultType" : "HTTP_ERROR",
+  "parameters" : { },
+  "state" : "COMPLETED",
+  "createdAt" : "2026-11-18T10:17:57.132547600Z",
+  "startedAt" : null,
+  "completedAt" : "2026-11-18T10:17:57.143621100Z",
+  "failureReason" : null,
+  "cleanupStatus" : "SUCCESS",
+  "assertions" : [ ],
+  "metrics" : {
+    "experimentId" : "exp-5d-f",
+    "scenarioType" : "RETRY_STORM",
+    "targetService" : "orders-service-v1",
+    "startTime" : "2026-11-18T10:17:57.143621100Z",
+    "endTime" : "2026-11-18T10:17:57.143621100Z",
+    "durationMs" : 0,
+    "injectedFaultType" : "HTTP_ERROR",
+    "totalRequests" : 2,
+    "successfulRequests" : 1,
+    "failedRequests" : 1,
+    "statusDistribution" : {
+      "200" : 1,
+      "503" : 1
+    },
+    "errorClassification" : {
+      "POST_NO_RETRY" : 1
+    },
+    "gatewayLatencyP50Ms" : 10.0,
+    "gatewayLatencyP95Ms" : 45.0,
+    "gatewayLatencyP99Ms" : 45.0,
+    "upstreamLatencyP50Ms" : 10.0,
+    "upstreamLatencyP95Ms" : 15.0,
+    "upstreamLatencyP99Ms" : 15.0,
+    "circuitBreakerTransitions" : [ ],
+    "bulkheadRejectionCount" : 0,
+    "retryAttemptCount" : 2,
+    "peakConcurrency" : 0,
+    "recoveryDurationMs" : 0,
+    "healthyServiceAvailability" : 100.0,
+    "cleanupStatus" : "SUCCESS",
+    "assertions" : [ {
+      "name" : "BoundedIdempotentRetries",
+      "description" : "Idempotent GET requests are retried upon transient failures up to maxAttempts budget",
+      "outcome" : "PASS",
+      "observedDetails" : "GET retried 2 times and completed with HTTP 200"
+    }, {
+      "name" : "NonIdempotentMethodSafety",
+      "description" : "Non-idempotent POST requests are never automatically retried to prevent duplicate mutations",
+      "outcome" : "PASS",
+      "observedDetails" : "POST failed with HTTP 503 after exactly 1 attempt (zero retries)"
+    }, {
+      "name" : "SingleQuotaDeductionPerRequest",
+      "description" : "Consumer quota is consumed strictly once per logical request, regardless of retry count",
+      "outcome" : "PASS",
+      "observedDetails" : "Single token consumed for multi-attempt request"
+    }, {
+      "name" : "RetryAmplificationTracking",
+      "description" : "Gateway tracks logical requests vs upstream attempts to quantify retry amplification ratio",
+      "outcome" : "PASS",
+      "observedDetails" : "Retry amplification ratio measured at 2.00x"
+    } ]
+  }
+} ]

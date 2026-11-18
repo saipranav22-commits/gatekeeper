@@ -1303,6 +1303,70 @@ Measures in-memory engine evaluation latency across 10, 100, and 500 rules:
 .\benchmark-policy-engine.ps1 -Iterations 200
 ```
 
+---
+
+## Phase 5D — Controlled Chaos Engineering & Reliability Experiment Lab
+
+Gatekeeper includes a dedicated, non-destructive **Controlled Chaos Engineering Laboratory** (`com.gatekeeper.chaos`) designed to validate distributed-systems failure isolation, concurrency ceilings, fail-closed security properties, and automatic self-healing under synthetic faults.
+
+### 1. Chaos Experiment Architecture
+
+```mermaid
+flowchart TD
+    Precheck["1. Precheck & Target Validation"] --> Baseline["2. Baseline Measurement"]
+    Baseline --> Fault["3. Controlled Fault Injection (/fault/configure)"]
+    Fault --> Observe["4. Observation & Telemetry Collection"]
+    Observe --> Remove["5. Fault Removal (/fault/reset)"]
+    Remove --> Recovery["6. Recovery Verification (Automatic Transition)"]
+    Recovery --> Cleanup["7. Mandatory Cleanup (Finally Block Guarantee)"]
+    Cleanup --> Report["8. Report Generation (Markdown & JSON)"]
+```
+
+### 2. Supported Scenarios
+
+| Scenario | Target | Fault Type | Key Reliability Property Proved |
+| :--- | :--- | :--- | :--- |
+| **Scenario A — Orders Service Outage** | `orders-service-v1` | `HTTP_ERROR` | Upstream 503 outage trips circuit breaker (`CLOSED -> OPEN`), fast-rejects without socket dispatch, keeps sibling Inventory route 100% operational, and automatically recovers (`OPEN -> HALF_OPEN -> CLOSED`). |
+| **Scenario B — Slow Upstream & Timeout Cascade** | `orders-service-v1` | `LATENCY_INJECTION` | Gateway timeouts enforced cleanly (HTTP 504), cumulative retry deadlines prevent runaway loops, semaphore permits released in finally blocks, and sibling Inventory latency remains unaffected. |
+| **Scenario C — Bulkhead Saturation** | `orders-service-v1` | `CONCURRENCY_BURST` | Concurrency ceiling enforced, excess concurrent requests fast-rejected with `BULKHEAD_REJECTED` (HTTP 503), zero permit leaks upon completion, and sibling Inventory route remains available. |
+| **Scenario D — Redis Dependency Failure** | `redis-token-bucket` | `DEPENDENCY_UNAVAILABLE` | **Fail-Closed Security**: when Redis rate-limiting backend is unavailable, requests fail closed (HTTP 503) rather than allowing unmetered/unauthorized traffic upstream. Normal operation resumes upon connectivity restoration. |
+| **Scenario E — Policy Safety Under Failure** | `policy-engine` | `DENY_POLICY_ACTIVATION` | Active DENY rule blocks unauthorized traffic with HTTP 403, consumer quota is **not decremented**, zero upstream calls are dispatched, and transactional rollback cleanly restores previous active version with audit trail. |
+| **Scenario F — Retry Storm Prevention** | `orders-service-v1` | `HTTP_ERROR` | Idempotent `GET` requests retried up to configured budget; non-idempotent `POST` requests are **never** automatically retried (maxAttempts = 1). Quota consumed once per logical request. Quantifies Retry Amplification Ratio. |
+
+### 3. Strict Safety & Blast-Radius Boundaries
+
+1. **Non-Production Environment Locks:** Locked to `@Profile({"local", "test", "dev"})`. Aborts immediately with `SecurityException` under `prod`.
+2. **Target Allowlisting:** Permitted targets are strictly restricted to local loopback services (`localhost:8081`, `localhost:8082`, `localhost:6380`, internal policy engine). Remote IPs or arbitrary URLs are rejected.
+3. **Zero Host Mutation:** Host databases, caches, and OS processes are preserved. Faults are simulated via in-memory filters rather than `docker stop` or process killing.
+4. **Bounded Parameters:** Maximum 500 requests, maximum 50 concurrent threads, maximum 60 seconds duration per experiment.
+5. **Single-Active Disruptive Experiment:** `ChaosSafetyGuard` enforces an exclusive target lock to prevent overlapping experiments on the same service.
+6. **Zero-Secret Telemetry:** All logs, JSON results, and Markdown reports sanitize tokens, passwords, and API keys.
+
+### 4. Verification Tooling (`verify-chaos-lab.ps1`)
+
+Windows PowerShell 5.1-compatible verification harness:
+```powershell
+# Safe Precheck Run (nondisruptive health validation)
+.\verify-chaos-lab.ps1
+
+# Execute Specific Controlled Chaos Scenarios
+.\verify-chaos-lab.ps1 -Scenario OrdersOutage -ExecuteDisruptive
+.\verify-chaos-lab.ps1 -Scenario SlowUpstream -ExecuteDisruptive
+.\verify-chaos-lab.ps1 -Scenario BulkheadIsolation -ExecuteDisruptive
+.\verify-chaos-lab.ps1 -Scenario RedisFailure -ExecuteDisruptive
+.\verify-chaos-lab.ps1 -Scenario PolicySafety -ExecuteDisruptive
+.\verify-chaos-lab.ps1 -Scenario RetryStorm -ExecuteDisruptive
+
+# Execute Full Chaos Suite
+.\verify-chaos-lab.ps1 -Scenario All -ExecuteDisruptive
+```
+
+### 5. Architectural Decision Record & Experiment Reports
+- **ADR 004:** [ADR 004: Controlled Chaos Engineering Harness](docs/adr/ADR-004-controlled-chaos-testing-harness.md)
+- **Latest Experiment Report:** [Phase 5D Chaos & Reliability Report](docs/chaos/phase-5d-experiment-report.md)
+- **Machine-Readable Telemetry:** [Phase 5D JSON Results](docs/chaos/results/phase-5d-results.json)
+
+
 
 
 
