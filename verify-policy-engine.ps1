@@ -642,22 +642,15 @@ try {
         exit 1
     }
 
-    # Safely unroll deserialized audit records in PowerShell 5.1 (supporting both raw array and Spring Page object)
+    # Safely extract audit records in PowerShell 5.1 (supporting raw JSON array, paginated Spring Page, or scalar)
     $auditsRaw = $auditsResp.Body | ConvertFrom-Json
-    $itemsToProcess = $auditsRaw
-    if ($null -ne $auditsRaw -and $null -ne $auditsRaw.content) {
-        $itemsToProcess = $auditsRaw.content
-    }
-
     $audits = @()
-    if ($null -ne $itemsToProcess) {
-        if ($itemsToProcess -is [System.Collections.IEnumerable] -and $itemsToProcess -isnot [string]) {
-            foreach ($entry in $itemsToProcess) {
-                $audits += $entry
-            }
-        } else {
-            $audits += $itemsToProcess
-        }
+    if ($auditsRaw -is [System.Array]) {
+        $audits = @($auditsRaw)
+    } elseif ($null -ne $auditsRaw -and $null -ne $auditsRaw.PSObject.Properties['content']) {
+        $audits = @($auditsRaw.content)
+    } elseif ($null -ne $auditsRaw) {
+        $audits = @($auditsRaw)
     }
 
     if ($audits.Count -lt 2) {
@@ -678,13 +671,33 @@ try {
         ($null -eq $_.policyKey -or $_.policyKey -eq $policyKey)
     } | Select-Object -First 1
 
-    if ($null -eq $v1AuditEvent) {
-        Write-Host "  [FAIL] Audit trail missing activation event for version $v1Num on '$policyKey'." -ForegroundColor Red
-        exit 1
-    }
+    if ($null -eq $v1AuditEvent -or $null -eq $v2AuditEvent) {
+        Write-Host "  [FAIL] Audit trail mismatch detected:" -ForegroundColor Red
+        Write-Host "    HTTP Status           : $($auditsResp.StatusCode)" -ForegroundColor DarkYellow
+        Write-Host "    Parsed Audit Count    : $($audits.Count)" -ForegroundColor DarkYellow
+        Write-Host "    Expected Versions     : Version 1 = $v1Num, Version 2 = $v2Num" -ForegroundColor DarkYellow
+        Write-Host "    V1 Event Matched      : $($null -ne $v1AuditEvent)" -ForegroundColor DarkYellow
+        Write-Host "    V2 Event Matched      : $($null -ne $v2AuditEvent)" -ForegroundColor DarkYellow
 
-    if ($null -eq $v2AuditEvent) {
-        Write-Host "  [FAIL] Audit trail missing activation event for version $v2Num on '$policyKey'." -ForegroundColor Red
+        # Display up to 5 nearby/recent records for context (sanitized, no secrets)
+        Write-Host "    Recent Audit Entries (Top 5):" -ForegroundColor DarkYellow
+        $topAudits = $audits | Select-Object -First 5
+        foreach ($entry in $topAudits) {
+            Write-Host "      - PolicyKey: $($entry.policyKey), Version: $($entry.versionNumber), Action: $($entry.action), Actor: $($entry.actor), Reason: $($entry.reason)" -ForegroundColor Gray
+        }
+
+        # Check raw JSON response text for target version numbers
+        $rawContainsV1 = $auditsResp.Body -match "`"versionNumber`"\s*:\s*$v1Num\b"
+        $rawContainsV2 = $auditsResp.Body -match "`"versionNumber`"\s*:\s*$v2Num\b"
+        Write-Host "    Raw Response Contains V$v1Num : $rawContainsV1" -ForegroundColor DarkYellow
+        Write-Host "    Raw Response Contains V$v2Num : $rawContainsV2" -ForegroundColor DarkYellow
+
+        if ($null -eq $v1AuditEvent) {
+            Write-Host "  [FAIL] Audit trail missing activation event for version $v1Num on '$policyKey'." -ForegroundColor Red
+        }
+        if ($null -eq $v2AuditEvent) {
+            Write-Host "  [FAIL] Audit trail missing activation event for version $v2Num on '$policyKey'." -ForegroundColor Red
+        }
         exit 1
     }
 
