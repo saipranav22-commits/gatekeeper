@@ -1,9 +1,16 @@
 # GATEKEEPER — PHASE 5D CONTROLLED CHAOS & RELIABILITY REPORT
 
-**Generated At:** 2026-11-18T10:17:57.144624800Z  
+**Generated At:** 2026-11-18T18:58:05.259871Z  
 **Target Environment:** Local Controlled Chaos Laboratory (Isolated Loopback)  
 **Stack:** Java 21, Spring Boot 3.3.5, PostgreSQL 16 (Port 5434), Redis 7.4 (Port 6380)  
 **Safety Controls:** Allowlisted Targets Only, Bounded Concurrency & Volume, Zero Host Mutation  
+
+> [!IMPORTANT]
+> **Evidence Provenance & Execution Classification**:
+> - **Execution Mode:** Scenarios A through F detailed below were captured via automated test harness fixtures (`GeneratePhase5DReportsTest`) and are classified as **`SYNTHETIC_FIXTURE`** / **`INTEGRATION_TEST`**.
+> - **Live Preflight:** `verify-chaos-lab.ps1 -Scenario Precheck` passed as **`LIVE_LOCAL_EXPERIMENT`** (non-disruptive preflight only).
+> - **Disruptive Live Scenarios:** All 6 disruptive live scenarios are classified as **`NOT_EXECUTED`** pending interactive operator authorization with `GATEKEEPER_ADMIN_PASSWORD`.
+> - **Assertion Precision:** Assertions for offline siblings are strictly recorded as **`INCONCLUSIVE`** and are not claimed as live verified benchmarks.  
 
 ---
 
@@ -13,7 +20,7 @@ The Gatekeeper Phase 5D Chaos Engineering Laboratory validates distributed syste
 
 | Experiment ID | Scenario | Target Service | State | Assertions (Pass/Total) | P95 Latency | Recovery |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `exp-5d-a` | Scenario A — Orders Service Outage | `orders-service-v1` | **COMPLETED** | 2/4 | 179.00 ms | 0 ms |
+| `exp-5d-a` | Scenario A — Orders Service Outage | `orders-service-v1` | **COMPLETED** | 2/4 | 193.00 ms | 0 ms |
 | `exp-5d-b` | Scenario B — Slow Upstream & Timeout Cascade | `orders-service-v1` | **COMPLETED** | 3/4 | 0.00 ms | 0 ms |
 | `exp-5d-c` | Scenario C — Bulkhead Saturation | `orders-service-v1` | **COMPLETED** | 3/4 | 1500.00 ms | 0 ms |
 | `exp-5d-d` | Scenario D — Redis Dependency Failure | `redis-token-bucket` | **COMPLETED** | 3/3 | 2.00 ms | 0 ms |
@@ -57,9 +64,9 @@ Simulates sustained upstream HTTP 503 outage, circuit breaker trip, fast rejecti
 #### 7. Latency Measurements (Internal Evaluation vs Client Network)
 | Metric | Gateway Client Latency | Upstream Dispatch Latency |
 | :--- | :--- | :--- |
-| **P50** | 5.00 ms | 5.00 ms |
-| **P95** | 179.00 ms | 179.00 ms |
-| **P99** | 179.00 ms | 179.00 ms |
+| **P50** | 4.00 ms | 4.00 ms |
+| **P95** | 193.00 ms | 193.00 ms |
+| **P99** | 193.00 ms | 193.00 ms |
 
 #### 8. Recovery Timeline
 - **Recovery Duration:** 0 ms

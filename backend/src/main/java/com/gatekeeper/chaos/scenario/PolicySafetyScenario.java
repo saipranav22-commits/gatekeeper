@@ -11,6 +11,8 @@ import com.gatekeeper.policy.dto.PolicyVersionDto;
 import com.gatekeeper.policy.model.PolicyAction;
 import com.gatekeeper.policy.model.PolicyRule;
 import com.gatekeeper.policy.service.PolicyAdministrationService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -32,6 +34,7 @@ import java.util.UUID;
  * </ul>
  */
 @Component
+@Profile({"local", "test", "dev", "default"})
 public class PolicySafetyScenario extends BaseChaosScenario {
 
     private final PolicyAdministrationService policyAdminService;
@@ -46,7 +49,7 @@ public class PolicySafetyScenario extends BaseChaosScenario {
     private volatile boolean rollbackVerified = false;
     private volatile boolean auditTrailRecorded = false;
 
-    public PolicySafetyScenario(PolicyAdministrationService policyAdminService) {
+    public PolicySafetyScenario(@Autowired(required = false) PolicyAdministrationService policyAdminService) {
         this.policyAdminService = policyAdminService;
     }
 

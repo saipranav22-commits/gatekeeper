@@ -7,6 +7,8 @@ import com.gatekeeper.chaos.model.ExperimentAssertion;
 import com.gatekeeper.ratelimit.dto.RateLimitPlan;
 import com.gatekeeper.ratelimit.exception.RateLimitUnavailableException;
 import com.gatekeeper.ratelimit.service.TokenBucketRateLimiter;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
@@ -29,6 +31,7 @@ import java.util.UUID;
  * </ul>
  */
 @Component
+@Profile({"local", "test", "dev", "default"})
 public class RedisFailureScenario extends BaseChaosScenario {
 
     private final TokenBucketRateLimiter rateLimiter;
@@ -37,7 +40,7 @@ public class RedisFailureScenario extends BaseChaosScenario {
     private volatile boolean upstreamProtected = false;
     private volatile boolean healthyRecoveryVerified = false;
 
-    public RedisFailureScenario(TokenBucketRateLimiter rateLimiter) {
+    public RedisFailureScenario(@Autowired(required = false) TokenBucketRateLimiter rateLimiter) {
         this.rateLimiter = rateLimiter;
     }
 

@@ -4,6 +4,7 @@ import com.gatekeeper.chaos.model.ChaosExperiment;
 import com.gatekeeper.chaos.model.ChaosScenarioType;
 import com.gatekeeper.chaos.model.ChaosTarget;
 import com.gatekeeper.chaos.model.ExperimentAssertion;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.net.http.HttpResponse;
@@ -24,6 +25,7 @@ import java.util.List;
  * </ul>
  */
 @Component
+@Profile({"local", "test", "dev", "default"})
 public class SlowUpstreamScenario extends BaseChaosScenario {
 
     private final String ordersBaseUrl = "http://localhost:8081";

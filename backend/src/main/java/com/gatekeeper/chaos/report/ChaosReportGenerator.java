@@ -8,6 +8,7 @@ import com.gatekeeper.chaos.model.ChaosExperiment;
 import com.gatekeeper.chaos.model.ExperimentAssertion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
@@ -29,6 +30,7 @@ import java.util.List;
  * </ul>
  */
 @Component
+@Profile({"local", "test", "dev", "default"})
 public class ChaosReportGenerator {
 
     private static final Logger log = LoggerFactory.getLogger(ChaosReportGenerator.class);
