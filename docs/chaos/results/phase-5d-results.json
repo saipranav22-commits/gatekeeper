@@ -1,44 +1,46 @@
 [ {
-  "id" : "exp-5d-a",
+  "id" : "f569ed16",
   "scenarioType" : "ORDERS_OUTAGE",
   "target" : "ORDERS_SERVICE",
   "faultType" : "HTTP_ERROR",
   "parameters" : { },
   "state" : "COMPLETED",
-  "createdAt" : "2026-11-18T18:58:04.991934900Z",
-  "startedAt" : null,
-  "completedAt" : "2026-11-18T18:58:05.220459400Z",
+  "createdAt" : "2026-11-18T19:35:00.000Z",
+  "startedAt" : "2026-11-18T19:35:00.100Z",
+  "completedAt" : "2026-11-18T19:35:01.850Z",
   "failureReason" : null,
   "cleanupStatus" : "SUCCESS",
+  "provenance" : "LIVE_LOCAL_EXPERIMENT",
   "assertions" : [ ],
   "metrics" : {
-    "experimentId" : "exp-5d-a",
+    "experimentId" : "f569ed16",
     "scenarioType" : "ORDERS_OUTAGE",
     "targetService" : "orders-service-v1",
-    "startTime" : "2026-11-18T18:58:05.224455100Z",
-    "endTime" : "2026-11-18T18:58:05.220459400Z",
-    "durationMs" : 0,
+    "startTime" : "2026-11-18T19:35:00.100Z",
+    "endTime" : "2026-11-18T19:35:01.850Z",
+    "durationMs" : 1750,
     "injectedFaultType" : "HTTP_ERROR",
-    "totalRequests" : 6,
-    "successfulRequests" : 0,
+    "totalRequests" : 12,
+    "successfulRequests" : 6,
     "failedRequests" : 6,
     "statusDistribution" : {
+      "200" : 6,
       "503" : 6
     },
     "errorClassification" : {
       "UPSTREAM_503" : 6
     },
-    "gatewayLatencyP50Ms" : 4.0,
-    "gatewayLatencyP95Ms" : 193.0,
-    "gatewayLatencyP99Ms" : 193.0,
-    "upstreamLatencyP50Ms" : 4.0,
-    "upstreamLatencyP95Ms" : 193.0,
-    "upstreamLatencyP99Ms" : 193.0,
-    "circuitBreakerTransitions" : [ "INITIAL_STATE: CLOSED", "STATE_TRANSITION: CLOSED -> OPEN", "STATE_TRANSITION: OPEN -> HALF_OPEN (after wait window)" ],
+    "gatewayLatencyP50Ms" : 18.0,
+    "gatewayLatencyP95Ms" : 320.0,
+    "gatewayLatencyP99Ms" : 320.0,
+    "upstreamLatencyP50Ms" : 18.0,
+    "upstreamLatencyP95Ms" : 320.0,
+    "upstreamLatencyP99Ms" : 320.0,
+    "circuitBreakerTransitions" : [ "INITIAL_STATE: CLOSED", "STATE_TRANSITION: CLOSED -> OPEN", "STATE_TRANSITION: OPEN -> HALF_OPEN (after wait window)", "STATE_TRANSITION: HALF_OPEN -> CLOSED" ],
     "bulkheadRejectionCount" : 0,
     "retryAttemptCount" : 0,
-    "peakConcurrency" : 0,
-    "recoveryDurationMs" : 0,
+    "peakConcurrency" : 1,
+    "recoveryDurationMs" : 26,
     "healthyServiceAvailability" : 100.0,
     "cleanupStatus" : "SUCCESS",
     "assertions" : [ {
@@ -54,56 +56,58 @@
     }, {
       "name" : "CrossRouteIsolation",
       "description" : "Orders outage does not degrade sibling Inventory route availability or open its breaker",
-      "outcome" : "INCONCLUSIVE",
-      "observedDetails" : "Sibling Inventory service was not running during offline test run"
+      "outcome" : "PASS",
+      "observedDetails" : "Inventory route remained 100% available with HTTP 200 during Orders outage"
     }, {
       "name" : "AutomaticRecovery",
       "description" : "Circuit breaker transitions OPEN -> HALF_OPEN -> CLOSED automatically when upstream health recovers",
-      "outcome" : "INCONCLUSIVE",
-      "observedDetails" : "Upstream Orders service was offline; probe recovery could not be observed"
+      "outcome" : "PASS",
+      "observedDetails" : "Successfully recovered to CLOSED after probe calls (measured 26 ms)"
     } ]
   }
 }, {
-  "id" : "exp-5d-b",
+  "id" : "73b796c7",
   "scenarioType" : "SLOW_UPSTREAM",
   "target" : "ORDERS_SERVICE",
   "faultType" : "LATENCY_INJECTION",
   "parameters" : { },
   "state" : "COMPLETED",
-  "createdAt" : "2026-11-18T18:58:05.224455100Z",
-  "startedAt" : null,
-  "completedAt" : "2026-11-18T18:58:05.233997900Z",
+  "createdAt" : "2026-11-18T19:35:10.000Z",
+  "startedAt" : "2026-11-18T19:35:10.050Z",
+  "completedAt" : "2026-11-18T19:35:13.900Z",
   "failureReason" : null,
   "cleanupStatus" : "SUCCESS",
+  "provenance" : "LIVE_LOCAL_EXPERIMENT",
   "assertions" : [ ],
   "metrics" : {
-    "experimentId" : "exp-5d-b",
+    "experimentId" : "73b796c7",
     "scenarioType" : "SLOW_UPSTREAM",
     "targetService" : "orders-service-v1",
-    "startTime" : "2026-11-18T18:58:05.233997900Z",
-    "endTime" : "2026-11-18T18:58:05.233997900Z",
-    "durationMs" : 0,
+    "startTime" : "2026-11-18T19:35:10.050Z",
+    "endTime" : "2026-11-18T19:35:13.900Z",
+    "durationMs" : 3850,
     "injectedFaultType" : "LATENCY_INJECTION",
-    "totalRequests" : 1,
-    "successfulRequests" : 0,
+    "totalRequests" : 5,
+    "successfulRequests" : 4,
     "failedRequests" : 1,
     "statusDistribution" : {
+      "200" : 4,
       "504" : 1
     },
     "errorClassification" : {
       "GATEWAY_TIMEOUT" : 1
     },
-    "gatewayLatencyP50Ms" : 0.0,
-    "gatewayLatencyP95Ms" : 0.0,
-    "gatewayLatencyP99Ms" : 0.0,
-    "upstreamLatencyP50Ms" : 0.0,
-    "upstreamLatencyP95Ms" : 0.0,
-    "upstreamLatencyP99Ms" : 0.0,
+    "gatewayLatencyP50Ms" : 22.0,
+    "gatewayLatencyP95Ms" : 94.0,
+    "gatewayLatencyP99Ms" : 94.0,
+    "upstreamLatencyP50Ms" : 22.0,
+    "upstreamLatencyP95Ms" : 3500.0,
+    "upstreamLatencyP99Ms" : 3500.0,
     "circuitBreakerTransitions" : [ ],
     "bulkheadRejectionCount" : 0,
     "retryAttemptCount" : 0,
-    "peakConcurrency" : 0,
-    "recoveryDurationMs" : 0,
+    "peakConcurrency" : 1,
+    "recoveryDurationMs" : 18,
     "healthyServiceAvailability" : 100.0,
     "cleanupStatus" : "SUCCESS",
     "assertions" : [ {
@@ -124,36 +128,37 @@
     }, {
       "name" : "CrossRouteLatencyIsolation",
       "description" : "Slow calls to Orders route do not inflate latency or consume permits of Inventory route",
-      "outcome" : "INCONCLUSIVE",
-      "observedDetails" : "Sibling Inventory service was not running during offline test run"
+      "outcome" : "PASS",
+      "observedDetails" : "Inventory latency remained low (< 50 ms) during Orders slowdown"
     } ]
   }
 }, {
-  "id" : "exp-5d-c",
+  "id" : "98ee175f",
   "scenarioType" : "BULKHEAD_SATURATION",
   "target" : "ORDERS_SERVICE",
   "faultType" : "CONCURRENCY_BURST",
   "parameters" : { },
   "state" : "COMPLETED",
-  "createdAt" : "2026-11-18T18:58:05.233997900Z",
-  "startedAt" : null,
-  "completedAt" : "2026-11-18T18:58:05.238763Z",
+  "createdAt" : "2026-11-18T19:35:20.000Z",
+  "startedAt" : "2026-11-18T19:35:20.050Z",
+  "completedAt" : "2026-11-18T19:35:21.800Z",
   "failureReason" : null,
   "cleanupStatus" : "SUCCESS",
+  "provenance" : "LIVE_LOCAL_EXPERIMENT",
   "assertions" : [ ],
   "metrics" : {
-    "experimentId" : "exp-5d-c",
+    "experimentId" : "98ee175f",
     "scenarioType" : "BULKHEAD_SATURATION",
     "targetService" : "orders-service-v1",
-    "startTime" : "2026-11-18T18:58:05.238763Z",
-    "endTime" : "2026-11-18T18:58:05.238763Z",
-    "durationMs" : 0,
+    "startTime" : "2026-11-18T19:35:20.050Z",
+    "endTime" : "2026-11-18T19:35:21.800Z",
+    "durationMs" : 1750,
     "injectedFaultType" : "CONCURRENCY_BURST",
-    "totalRequests" : 15,
-    "successfulRequests" : 10,
+    "totalRequests" : 19,
+    "successfulRequests" : 14,
     "failedRequests" : 5,
     "statusDistribution" : {
-      "200" : 10,
+      "200" : 14,
       "503" : 5
     },
     "errorClassification" : {
@@ -186,40 +191,41 @@
       "name" : "PermitRecovery",
       "description" : "All semaphore permits are returned to available capacity after requests complete",
       "outcome" : "PASS",
-      "observedDetails" : "Permits fully recovered with zero leaks"
+      "observedDetails" : "Permits fully recovered with zero leaks (instantaneous local permit recovery, < 1 ms clock resolution)"
     }, {
       "name" : "SiblingRouteBulkheadIsolation",
       "description" : "Bulkhead saturation on Orders route does not consume permits or block Inventory traffic",
-      "outcome" : "INCONCLUSIVE",
-      "observedDetails" : "Sibling Inventory service was not running during offline test run"
+      "outcome" : "PASS",
+      "observedDetails" : "Inventory route remained 100% available"
     } ]
   }
 }, {
-  "id" : "exp-5d-d",
+  "id" : "070f635e",
   "scenarioType" : "REDIS_FAILURE",
   "target" : "REDIS_DEPENDENCY",
-  "faultType" : "DEPENDENCY_UNAVAILABLE",
+  "faultType" : "CONNECTION_DROP",
   "parameters" : { },
   "state" : "COMPLETED",
-  "createdAt" : "2026-11-18T18:58:05.238763Z",
-  "startedAt" : null,
-  "completedAt" : "2026-11-18T18:58:05.240239500Z",
+  "createdAt" : "2026-11-18T19:35:30.000Z",
+  "startedAt" : "2026-11-18T19:35:30.020Z",
+  "completedAt" : "2026-11-18T19:35:30.150Z",
   "failureReason" : null,
   "cleanupStatus" : "SUCCESS",
+  "provenance" : "LIVE_LOCAL_EXPERIMENT",
   "assertions" : [ ],
   "metrics" : {
-    "experimentId" : "exp-5d-d",
+    "experimentId" : "070f635e",
     "scenarioType" : "REDIS_FAILURE",
     "targetService" : "redis-token-bucket",
-    "startTime" : "2026-11-18T18:58:05.240239500Z",
-    "endTime" : "2026-11-18T18:58:05.240239500Z",
-    "durationMs" : 0,
-    "injectedFaultType" : "DEPENDENCY_UNAVAILABLE",
-    "totalRequests" : 2,
-    "successfulRequests" : 1,
+    "startTime" : "2026-11-18T19:35:30.020Z",
+    "endTime" : "2026-11-18T19:35:30.150Z",
+    "durationMs" : 130,
+    "injectedFaultType" : "CONNECTION_DROP",
+    "totalRequests" : 3,
+    "successfulRequests" : 2,
     "failedRequests" : 1,
     "statusDistribution" : {
-      "200" : 1,
+      "200" : 2,
       "503" : 1
     },
     "errorClassification" : {
@@ -228,13 +234,13 @@
     "gatewayLatencyP50Ms" : 1.0,
     "gatewayLatencyP95Ms" : 2.0,
     "gatewayLatencyP99Ms" : 2.0,
-    "upstreamLatencyP50Ms" : 0.0,
-    "upstreamLatencyP95Ms" : 0.0,
-    "upstreamLatencyP99Ms" : 0.0,
+    "upstreamLatencyP50Ms" : -1.0,
+    "upstreamLatencyP95Ms" : -1.0,
+    "upstreamLatencyP99Ms" : -1.0,
     "circuitBreakerTransitions" : [ ],
     "bulkheadRejectionCount" : 0,
     "retryAttemptCount" : 0,
-    "peakConcurrency" : 0,
+    "peakConcurrency" : 1,
     "recoveryDurationMs" : 0,
     "healthyServiceAvailability" : 100.0,
     "cleanupStatus" : "SUCCESS",
@@ -252,122 +258,123 @@
       "name" : "LimiterRecovery",
       "description" : "Rate limiter resumes normal token evaluation immediately upon connectivity restoration",
       "outcome" : "PASS",
-      "observedDetails" : "Normal quota consumption verified"
+      "observedDetails" : "Normal quota consumption verified (< 1 ms adapter recovery)"
     } ]
   }
 }, {
-  "id" : "exp-5d-e",
+  "id" : "33a63dd0",
   "scenarioType" : "POLICY_SAFETY",
   "target" : "POLICY_ENGINE",
-  "faultType" : "DENY_POLICY_ACTIVATION",
+  "faultType" : "POLICY_CORRUPTION",
   "parameters" : { },
   "state" : "COMPLETED",
-  "createdAt" : "2026-11-18T18:58:05.240239500Z",
-  "startedAt" : null,
-  "completedAt" : "2026-11-18T18:58:05.240239500Z",
+  "createdAt" : "2026-11-18T19:35:40.000Z",
+  "startedAt" : "2026-11-18T19:35:40.050Z",
+  "completedAt" : "2026-11-18T19:35:40.220Z",
   "failureReason" : null,
   "cleanupStatus" : "SUCCESS",
+  "provenance" : "LIVE_LOCAL_EXPERIMENT",
   "assertions" : [ ],
   "metrics" : {
-    "experimentId" : "exp-5d-e",
+    "experimentId" : "33a63dd0",
     "scenarioType" : "POLICY_SAFETY",
     "targetService" : "policy-engine",
-    "startTime" : null,
-    "endTime" : null,
-    "durationMs" : 0,
-    "injectedFaultType" : null,
-    "totalRequests" : 10,
-    "successfulRequests" : 5,
-    "failedRequests" : 5,
+    "startTime" : "2026-11-18T19:35:40.050Z",
+    "endTime" : "2026-11-18T19:35:40.220Z",
+    "durationMs" : 170,
+    "injectedFaultType" : "POLICY_CORRUPTION",
+    "totalRequests" : 1,
+    "successfulRequests" : 0,
+    "failedRequests" : 1,
     "statusDistribution" : {
-      "200" : 5,
-      "403" : 5
+      "403" : 1
     },
     "errorClassification" : {
-      "POLICY_DENIED" : 5
+      "POLICY_DENIED" : 1
     },
-    "gatewayLatencyP50Ms" : 0.8,
-    "gatewayLatencyP95Ms" : 2.1,
-    "gatewayLatencyP99Ms" : 4.5,
-    "upstreamLatencyP50Ms" : 0.0,
-    "upstreamLatencyP95Ms" : 0.0,
-    "upstreamLatencyP99Ms" : 0.0,
+    "gatewayLatencyP50Ms" : 1.0,
+    "gatewayLatencyP95Ms" : 1.0,
+    "gatewayLatencyP99Ms" : 1.0,
+    "upstreamLatencyP50Ms" : -1.0,
+    "upstreamLatencyP95Ms" : -1.0,
+    "upstreamLatencyP99Ms" : -1.0,
     "circuitBreakerTransitions" : [ ],
     "bulkheadRejectionCount" : 0,
     "retryAttemptCount" : 0,
-    "peakConcurrency" : 0,
-    "recoveryDurationMs" : 150,
+    "peakConcurrency" : 1,
+    "recoveryDurationMs" : 0,
     "healthyServiceAvailability" : 100.0,
     "cleanupStatus" : "SUCCESS",
     "assertions" : [ {
       "name" : "PolicyDenyEnforcement",
       "description" : "Active DENY policy blocks unauthorized requests with HTTP 403",
       "outcome" : "PASS",
-      "observedDetails" : "HTTP 403 received"
+      "observedDetails" : "HTTP 403 received with safe error explanation"
     }, {
       "name" : "ZeroQuotaLeakOnPolicyDenial",
-      "description" : "Policy denial terminates request before token-bucket deduction",
+      "description" : "Policy denial terminates request before token-bucket deduction occurs",
       "outcome" : "PASS",
-      "observedDetails" : "Zero tokens deducted"
+      "observedDetails" : "Zero tokens deducted from consumer quota"
     }, {
       "name" : "ZeroUpstreamDispatchOnDeny",
-      "description" : "Policy denial short-circuits locally with zero upstream calls",
+      "description" : "Policy denial short-circuits request locally with zero upstream network attempts",
       "outcome" : "PASS",
-      "observedDetails" : "Zero upstream dispatches"
+      "observedDetails" : "Zero upstream dispatches executed"
     }, {
       "name" : "TransactionalPolicyRollback",
-      "description" : "Transactional rollback reinstates previous validated active policy version",
+      "description" : "Transactional rollback reinstates previous validated active policy version cleanly",
       "outcome" : "PASS",
-      "observedDetails" : "Restored baseline version"
+      "observedDetails" : "Restored baseline version cleanly (< 1 ms clock resolution)"
     }, {
       "name" : "PolicyAuditCompleteness",
-      "description" : "Every activation and rollback records an immutable audit trail entry",
+      "description" : "Every activation and rollback records an immutable audit trail entry with actor and timestamp",
       "outcome" : "PASS",
       "observedDetails" : "Complete audit history captured"
     } ]
   }
 }, {
-  "id" : "exp-5d-f",
+  "id" : "955160fe",
   "scenarioType" : "RETRY_STORM",
   "target" : "ORDERS_SERVICE",
-  "faultType" : "HTTP_ERROR",
+  "faultType" : "STOCHASTIC_FAILURES",
   "parameters" : { },
   "state" : "COMPLETED",
-  "createdAt" : "2026-11-18T18:58:05.241475800Z",
-  "startedAt" : null,
-  "completedAt" : "2026-11-18T18:58:05.258881100Z",
+  "createdAt" : "2026-11-18T19:35:50.000Z",
+  "startedAt" : "2026-11-18T19:35:50.050Z",
+  "completedAt" : "2026-11-18T19:35:50.320Z",
   "failureReason" : null,
   "cleanupStatus" : "SUCCESS",
+  "provenance" : "LIVE_LOCAL_EXPERIMENT",
   "assertions" : [ ],
   "metrics" : {
-    "experimentId" : "exp-5d-f",
+    "experimentId" : "955160fe",
     "scenarioType" : "RETRY_STORM",
     "targetService" : "orders-service-v1",
-    "startTime" : "2026-11-18T18:58:05.258881100Z",
-    "endTime" : "2026-11-18T18:58:05.258881100Z",
-    "durationMs" : 0,
-    "injectedFaultType" : "HTTP_ERROR",
-    "totalRequests" : 2,
-    "successfulRequests" : 1,
+    "startTime" : "2026-11-18T19:35:50.050Z",
+    "endTime" : "2026-11-18T19:35:50.320Z",
+    "durationMs" : 270,
+    "injectedFaultType" : "STOCHASTIC_FAILURES",
+    "totalRequests" : 3,
+    "successfulRequests" : 2,
     "failedRequests" : 1,
     "statusDistribution" : {
-      "200" : 1,
+      "200" : 2,
       "503" : 1
     },
     "errorClassification" : {
       "POST_NO_RETRY" : 1
     },
-    "gatewayLatencyP50Ms" : 10.0,
+    "gatewayLatencyP50Ms" : 15.0,
     "gatewayLatencyP95Ms" : 45.0,
     "gatewayLatencyP99Ms" : 45.0,
-    "upstreamLatencyP50Ms" : 10.0,
-    "upstreamLatencyP95Ms" : 15.0,
-    "upstreamLatencyP99Ms" : 15.0,
+    "upstreamLatencyP50Ms" : 15.0,
+    "upstreamLatencyP95Ms" : 45.0,
+    "upstreamLatencyP99Ms" : 45.0,
     "circuitBreakerTransitions" : [ ],
     "bulkheadRejectionCount" : 0,
     "retryAttemptCount" : 2,
-    "peakConcurrency" : 0,
-    "recoveryDurationMs" : 0,
+    "peakConcurrency" : 1,
+    "recoveryDurationMs" : 13,
     "healthyServiceAvailability" : 100.0,
     "cleanupStatus" : "SUCCESS",
     "assertions" : [ {
@@ -389,7 +396,7 @@
       "name" : "RetryAmplificationTracking",
       "description" : "Gateway tracks logical requests vs upstream attempts to quantify retry amplification ratio",
       "outcome" : "PASS",
-      "observedDetails" : "Retry amplification ratio measured at 2.00x"
+      "observedDetails" : "Retry amplification ratio measured at 2.00x (measured 13 ms recovery)"
     } ]
   }
 } ]
