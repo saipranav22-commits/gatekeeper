@@ -61,6 +61,7 @@ flowchart TD
   - SPA Fallback routing via `try_files $uri $uri/ /index.html`.
   - Terminates or forwards API requests under `/api/` directly to `http://gateway:8080/api/` via container-internal DNS.
   - Enforces HTTP security headers (`X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Content-Security-Policy`).
+  - Implements a **Trusted Edge Proxy Model** using CIDR matching (`127.0.0.1`, `::1`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) to safely propagate `X-Forwarded-Proto` from trusted TLS terminators while stripping spoofed headers from untrusted direct callers.
 
 ### 2. Core Gateway & Policy Engine (`gatekeeper-deploy-gateway`)
 - **Base Image**: `eclipse-temurin:21-jre-alpine`

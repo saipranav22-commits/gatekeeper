@@ -97,21 +97,45 @@ Gateway waits for Postgres, Redis, Orders, and Inventory to report `healthy` bef
 
 ## 4. Reverse Proxy, Proxy Headers & TLS Termination
 
-### Forwarded Headers & Ingress
-- Nginx forwards client IP and protocol via:
-  ```nginx
-  proxy_set_header X-Real-IP $remote_addr;
-  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-  proxy_set_header X-Forwarded-Proto $scheme;
-  ```
-- Gateway parses forwarded headers via Spring Boot framework integration:
-  ```yaml
-  server:
-    forward-headers-strategy: framework
-  ```
+### Trusted Edge Proxy Architecture
+To prevent header spoofing attacks while supporting upstream TLS termination (e.g., Caddy, AWS ALB, Cloudflare, Traefik), `frontend/nginx.conf` implements a strict **Trusted Edge Proxy Model**:
 
-### TLS Termination Requirements
-In production, HTTPS must terminate at an edge reverse proxy (such as Cloudflare, AWS ALB, Caddy, or an external Nginx Certbot instance) before reaching the Frontend container. When TLS terminates upstream, the edge proxy must set `X-Forwarded-Proto: https` so that Gatekeeper generates secure redirects and links.
+```nginx
+geo $remote_addr $trusted_edge_proxy {
+    default 0;
+    127.0.0.1 1;
+    ::1 1;
+    10.0.0.0/8 1;
+    172.16.0.0/12 1;
+    192.168.0.0/16 1;
+}
+
+map $http_x_forwarded_proto $edge_proto {
+    default $http_x_forwarded_proto;
+    ""      $scheme;
+}
+
+map $trusted_edge_proxy $forwarded_proto {
+    1       $edge_proto;
+    default $scheme;
+}
+```
+
+### Security Behaviors Under Different Ingress Scenarios:
+1. **Direct Untrusted HTTP Access**:
+   When an external client connects directly to Nginx over HTTP without an intermediate edge proxy, `$trusted_edge_proxy` evaluates to `0`. Nginx strictly binds `X-Forwarded-Proto` to the actual connection `$scheme` (`http`), ignoring any client-injected headers.
+2. **Legitimate HTTPS Behind Edge Proxy (Caddy / ALB / Cloudflare)**:
+   When an edge proxy terminates TLS in a trusted CIDR (e.g. Docker bridge `172.16.0.0/12` or VPC `10.0.0.0/8`) and forwards `X-Forwarded-Proto: https`, `$trusted_edge_proxy` evaluates to `1`. Nginx preserves `https` and forwards it to the Gateway.
+3. **Malicious Client Header Spoofing**:
+   If an untrusted external attacker sends `X-Forwarded-Proto: https` directly to Nginx over plain HTTP to fool Spring Boot's redirect or cookie policies, Nginx detects the untrusted source IP (`$trusted_edge_proxy = 0`), discards the attacker's value, and sets `X-Forwarded-Proto: http`.
+
+### Spring Boot Forwarded Header Strategy
+The Gateway backend consumes these sanitized headers through:
+```yaml
+server:
+  forward-headers-strategy: framework
+```
+This ensures Spring Boot correctly determines the real client IP and protocol without vulnerability to header injection from untrusted clients.
 
 ---
 

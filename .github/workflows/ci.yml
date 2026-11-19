@@ -41,21 +41,43 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Start Redis with Password Authentication
+        env:
+          CI_REDIS_PASSWORD: test_redis_password
         run: |
+          # Cleanup any lingering container from previous or aborted runs
+          docker rm -f redis-ci 2>/dev/null || true
+
+          # Start Redis 7 with password authentication
           docker run -d \
-            --name redis \
+            --name redis-ci \
             -p 6379:6379 \
             redis:7-alpine \
-            redis-server --requirepass test_redis_password
+            redis-server --requirepass "$CI_REDIS_PASSWORD"
 
-          # Await Redis readiness
+          # Await Redis readiness with authenticated ping
+          REDIS_READY=false
           for i in {1..30}; do
-            if docker run --rm --network host redis:7-alpine redis-cli -a test_redis_password ping | grep -q PONG; then
-              echo "Redis is ready with password authentication"
+            if docker run --rm --network host redis:7-alpine redis-cli -a "$CI_REDIS_PASSWORD" ping 2>/dev/null | grep -q PONG; then
+              echo "Redis is ready with authenticated access."
+              REDIS_READY=true
               break
             fi
             sleep 1
           done
+
+          if [ "$REDIS_READY" != "true" ]; then
+            echo "ERROR: Redis failed to reach ready state within 30 seconds."
+            docker logs redis-ci 2>&1 || true
+            exit 1
+          fi
+
+          # Verify that unauthenticated access is strictly rejected (NOAUTH)
+          if docker run --rm --network host redis:7-alpine redis-cli ping 2>&1 | grep -q "NOAUTH"; then
+            echo "Verified: Unauthenticated requests are rejected with NOAUTH."
+          else
+            echo "ERROR: Redis failed to reject unauthenticated request."
+            exit 1
+          fi
 
       - name: Set up Temurin JDK 21
         uses: actions/setup-java@v4
@@ -65,22 +87,37 @@ jobs:
           cache: 'maven'
 
       - name: Execute Full Backend Test Suite
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: gatekeeper_test
+          DB_USERNAME: test_user
+          DB_PASSWORD: test_password
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          REDIS_PASSWORD: test_redis_password
+          GATEKEEPER_JWT_SECRET: "ci-test-secret-at-least-32-characters-entropy-required!"
         run: |
           mvn clean test \
             -f backend/pom.xml \
             -B \
-            -DDB_HOST=localhost \
-            -DDB_PORT=5432 \
-            -DDB_NAME=gatekeeper_test \
-            -DDB_USERNAME=test_user \
-            -DDB_PASSWORD=test_password \
-            -DREDIS_HOST=localhost \
-            -DREDIS_PORT=6379 \
-            -DREDIS_PASSWORD=test_redis_password \
-            -DGATEKEEPER_JWT_SECRET="ci-test-secret-at-least-32-characters-entropy-required!"
+            -DDB_HOST=$DB_HOST \
+            -DDB_PORT=$DB_PORT \
+            -DDB_NAME=$DB_NAME \
+            -DDB_USERNAME=$DB_USERNAME \
+            -DDB_PASSWORD=$DB_PASSWORD \
+            -DREDIS_HOST=$REDIS_HOST \
+            -DREDIS_PORT=$REDIS_PORT \
+            -DREDIS_PASSWORD=$REDIS_PASSWORD \
+            -DGATEKEEPER_JWT_SECRET="$GATEKEEPER_JWT_SECRET"
 
       - name: Verify Backend Packaging
         run: mvn package -f backend/pom.xml -DskipTests -B
+
+      - name: Teardown Redis Container
+        if: always()
+        run: |
+          docker rm -f redis-ci 2>/dev/null || true
 
   microservices-test:
     name: Upstream Microservices Tests
@@ -125,6 +162,9 @@ jobs:
 
       - name: Install Dependencies
         run: npm ci
+
+      - name: Run TypeScript Type Check
+        run: npx tsc -b
 
       - name: Run Linter
         run: npm run lint
