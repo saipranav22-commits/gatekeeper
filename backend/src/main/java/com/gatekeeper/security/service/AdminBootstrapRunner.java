@@ -6,10 +6,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 import java.io.Console;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Scanner;
 
 @Component
@@ -21,15 +23,41 @@ public class AdminBootstrapRunner implements ApplicationRunner {
 
     private final AdminUserRepository adminUserRepository;
     private final AdminBootstrapService adminBootstrapService;
+    private final Environment environment;
 
     public AdminBootstrapRunner(AdminUserRepository adminUserRepository, AdminBootstrapService adminBootstrapService) {
+        this(adminUserRepository, adminBootstrapService, null);
+    }
+
+    public AdminBootstrapRunner(AdminUserRepository adminUserRepository,
+                                AdminBootstrapService adminBootstrapService,
+                                Environment environment) {
         this.adminUserRepository = adminUserRepository;
         this.adminBootstrapService = adminBootstrapService;
+        this.environment = environment;
+    }
+
+    public boolean isBootstrapRequested(ApplicationArguments args) {
+        if (args != null && args.containsOption(BOOTSTRAP_OPTION)) {
+            List<String> values = args.getOptionValues(BOOTSTRAP_OPTION);
+            if (values == null || values.isEmpty()) {
+                // Flag passed without value: e.g. --gatekeeper.bootstrap.enabled
+                return true;
+            }
+            return "true".equalsIgnoreCase(values.get(0));
+        }
+        if (environment != null) {
+            String prop = environment.getProperty(BOOTSTRAP_OPTION);
+            if (prop != null) {
+                return "true".equalsIgnoreCase(prop) || prop.isBlank();
+            }
+        }
+        return false;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        if (!args.containsOption(BOOTSTRAP_OPTION) || !"true".equalsIgnoreCase(args.getOptionValues(BOOTSTRAP_OPTION).get(0))) {
+        if (!isBootstrapRequested(args)) {
             return;
         }
 

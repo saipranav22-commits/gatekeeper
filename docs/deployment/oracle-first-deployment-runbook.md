@@ -1,9 +1,9 @@
 # Gatekeeper — Oracle Cloud Infrastructure Always Free First Deployment Runbook
 
 > [!IMPORTANT]
-> **Strict ₹0 Budget Guarantee**
-> This runbook is engineered to run permanently within the **Oracle Cloud Infrastructure (OCI) Always Free Tier**. Follow the exact instance shape, sizing, and volume limits specified below to guarantee **$0.00 / ₹0.00** recurring billing.
-> Do NOT click "Upgrade to Paid" or provision shapes without the "Always Free Eligible" badge unless explicitly intended.
+> **Strict ₹0 Budget Guidelines**
+> This runbook is engineered to run within the **Oracle Cloud Infrastructure (OCI) Always Free Tier**. Follow the exact instance shape, sizing, and volume limits specified below.
+> Do NOT select paid shapes or resources without the "Always Free Eligible" badge.
 
 ---
 
@@ -11,30 +11,32 @@
 
 - **Target Cloud Provider**: Oracle Cloud Infrastructure (OCI) Always Free Tier
 - **Compute Shape**: `VM.Standard.A1.Flex` (Ampere Altra ARM64)
-- **Allocation**: 2 OCPUs, 12 GB RAM (Consumes 1,488 OCPU-hours and 8,928 GB-hours per 31-day month; well within monthly allowances)
-- **Storage**: 50 GB Boot Volume (Out of 200 GB Always Free block volume allowance)
+- **Allocation**: 2 OCPUs, 12 GB RAM
+- **Storage**: 50 GB Boot Volume (Within the 200 GB Always Free total storage allowance across tenancy)
 - **Networking**: 1 Ephemeral or Reserved Public IPv4 (Included free)
 - **Ingress Strategy**: Host-level Caddy reverse proxy terminating Let's Encrypt TLS for `gatekeeper.<PUBLIC_IP>.sslip.io`, forwarding HTTP traffic to `127.0.0.1:3000` (Docker Nginx frontend)
-- **Edge Security**: `frontend/nginx.conf` trusts Docker bridge gateway `172.28.0.1/32` to accept sanitized `X-Forwarded-*` headers from Caddy while blocking all direct untrusted header spoofing
+- **Edge Security**: `frontend/nginx.conf` trusts Docker bridge gateway `172.28.0.1/32` to accept sanitized `X-Forwarded-*` headers from Caddy while discarding untrusted direct headers
+- **Application Startup**: Shell-based Docker ENTRYPOINT in `backend/Dockerfile` passes all arguments (`"$@"`) to the JVM, enabling safe opt-in CLI options such as `--gatekeeper.bootstrap.enabled=true`
 
 ---
 
-## Section A: Oracle Account & Billing Eligibility Verification
+## Section A: Oracle Account & Console Quota Verification
 
 1. **Log in to OCI Console**: Navigate to [cloud.oracle.com](https://cloud.oracle.com).
-2. **Verify Limits & Quotas**:
+2. **Verify Tenancy Quotas Before Provisioning**:
    - In the search bar or hamburger menu, navigate to **Governance & Administration** -> **Limits, Quotas and Usage**.
    - Select Service: **Compute**.
    - Check the limit for **Cores for Standard.A1 Based VM and BM Instances**:
-     - Verify available quota is at least **2 OCPUs** (Standard free tenancy provides 4 OCPUs and 24 GB RAM; 3,000 OCPU-hrs / 18,000 GB-hrs per month).
-3. **Configure Zero-Cost Cost Tracking & Budget Alerts**:
+     - Verify available quota is at least **2 OCPUs**.
+     - *Notice*: Tenancy entitlements vary by home region and account type. Always verify actual quotas in this console before proceeding.
+3. **Configure Zero-Cost Budget & Spend Alerts**:
    - Navigate to **Billing & Cost Management** -> **Budgets**.
    - Click **Create Budget**:
      - Scope: **Tenancy**
      - Target Amount: **$1.00** (or ₹100.00)
      - Alert Rule: Trigger alert when Forecasted Spend reaches **10%** ($0.10).
      - Recipient: Enter your monitoring email address.
-   - This ensures immediate notification if any resource inadvertently drifts outside Always Free boundaries.
+   - This ensures immediate notification if any resource inadvertently drifts into billable scope.
 
 ---
 
@@ -47,7 +49,7 @@
    - **Port 22 (SSH)**: Source `0.0.0.0/0`, IP Protocol `TCP`, Destination Port `22`
    - **Port 80 (HTTP)**: Source `0.0.0.0/0`, IP Protocol `TCP`, Destination Port `80` (ACME challenges)
    - **Port 443 (HTTPS)**: Source `0.0.0.0/0`, IP Protocol `TCP`, Destination Port `443`
-4. **VERIFY**: Ensure database port `5432`, Redis port `6379`, gateway port `8080`, and frontend port `3000` are **NOT** present in the ingress rules.
+4. **VERIFY**: Ensure database port `5432`, Redis port `6379`, gateway port `8080`, and frontend port `3000` are **NOT** open in VCN ingress rules.
 
 ### 2. Launch the Compute Instance
 1. Navigate to **Compute** -> **Instances** -> **Create Instance**.
@@ -66,8 +68,8 @@
    - Select **Upload public key files (.pub)** or generate a new key pair.
    - Save the private key securely on your local development machine (e.g. `~/.ssh/oci_gatekeeper_id_ed25519`).
 7. **Boot Volume**:
-   - Check **Specify a custom boot volume size**: **50 GB** (Always Free tier allows up to 200 GB total).
-8. Click **Create**. Wait 2–3 minutes until the instance state displays **RUNNING**.
+   - Check **Specify a custom boot volume size**: **50 GB** (Ensure total storage across all tenancy volumes stays under 200 GB).
+8. Click **Create**. Wait until the instance state displays **RUNNING**.
 9. Record the assigned **Public IP address** (e.g. `140.238.12.34`).
 
 ---
@@ -117,7 +119,7 @@ sudo install -m 0755 -d /etc/apt/keyrings
 sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 sudo chmod a+r /etc/apt/keyrings/docker.asc
 
-# Add the repository to Apt sources (automatically resolves aarch64 arch)
+# Add the repository to Apt sources (automatically resolves aarch64 architecture)
 echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
   $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
@@ -191,7 +193,6 @@ Because the repository `https://github.com/saipranav22-commits/gatekeeper` is pr
    sudo chown -R ubuntu:ubuntu /opt/gatekeeper
    git clone git@github.com:saipranav22-commits/gatekeeper.git /opt/gatekeeper
    cd /opt/gatekeeper
-   # Checkout the release commit (or latest verified master commit)
    git checkout master
    ```
 
@@ -199,7 +200,7 @@ Because the repository `https://github.com/saipranav22-commits/gatekeeper` is pr
 
 ## Section F: Production Environment Secret Generation
 
-Never reuse development credentials or check production secrets into Git:
+Never commit production passwords or expose them in shell history:
 
 ```bash
 cd /opt/gatekeeper
@@ -243,25 +244,23 @@ sed -i "s|^SPRING_PROFILES_ACTIVE=.*|SPRING_PROFILES_ACTIVE=prod|" .env
    ```
 
 3. **Execute One-Off Administrator Bootstrap**:
-   Spring Boot fat JARs cannot be invoked via raw classpaths. The canonical bootstrap mechanism uses a one-off Docker container running the Gateway entrypoint with `--gatekeeper.bootstrap.enabled=true`:
+   The backend container image forwards positional arguments to the JVM (`exec java $JAVA_OPTS -jar /app/app.jar "$@"`).
+   Run the one-off interactive bootstrap container:
 
    ```bash
-   # Interactive console (prompts securely for username, email, and password):
+   # Prompts securely in the terminal for username, email, and masked password:
    docker compose -f docker-compose.deploy.yml run --rm -it gateway --gatekeeper.bootstrap.enabled=true
    ```
 
-   *Non-Interactive Alternative (e.g. passing pre-generated credentials)*:
-   ```bash
-   docker compose -f docker-compose.deploy.yml run --rm \
-     -e BOOTSTRAP_ADMIN_USERNAME="admin" \
-     -e BOOTSTRAP_ADMIN_EMAIL="admin@gatekeeper.local" \
-     -e BOOTSTRAP_ADMIN_PASSWORD="YourStrongPassword123!" \
-     gateway --gatekeeper.bootstrap.enabled=true
-   ```
+   > [!NOTE]
+   > **Interactive Security**:
+   > Never place passwords on the command line or shell history. The runner reads the password via `System.console().readPassword()` with terminal echo disabled.
+   > Immediately after hashing with BCrypt (cost factor 12), the password character array in memory is zeroed out (`Arrays.fill(password, '\0')`).
 
 4. **Verify Idempotency**:
-   Re-running the command should report:
+   Re-running the bootstrap command reports:
    `Administrator bootstrap skipped: an administrator already exists in the database.`
+   Existing administrator accounts cannot be overwritten or corrupted by rerun attempts.
 
 ---
 
@@ -335,7 +334,7 @@ Expected status:
    ```bash
    curl -Iv "https://gatekeeper.${PUBLIC_IP}.sslip.io"
    ```
-   Confirm HTTP `200 OK` and a valid Let's Encrypt certificate.
+   Confirm HTTP `200 OK` and a valid Let's Encrypt TLS certificate.
 
 2. **Verify Public Gateway Health Endpoint**:
    ```bash
@@ -349,27 +348,34 @@ Expected status:
      -H "Content-Type: application/json" \
      -d '{"name":"latency-test"}'
    ```
-   Confirm HTTP `404 Not Found` (chaos controller is disabled by `@Profile("!prod")`).
+   Confirm HTTP `404 Not Found` (chaos engineering controller is disabled by `@Profile("!prod")`).
 
 4. **Verify Admin Authentication**:
    ```bash
    curl -s -X POST "https://gatekeeper.${PUBLIC_IP}.sslip.io/api/v1/auth/login" \
      -H "Content-Type: application/json" \
-     -d '{"username":"admin","password":"YourStrongPassword123!"}' | jq .
+     -d '{"username":"<BOOTSTRAP-ADMIN>","password":"<BOOTSTRAP-PASSWORD>"}' | jq .
    ```
    Confirm successful JWT token return (`accessToken`).
 
 5. **Run Automated Verification Script**:
-   From your management environment:
+   From your management workstation:
    ```powershell
    ./verify-deployment.ps1 -FrontendUrl "https://gatekeeper.<PUBLIC_IP>.sslip.io" -SkipDirectGatewayCheck
    ```
 
 ---
 
-## Section K: Backup, Maintenance & Disaster Recovery
+## Section K: Backup, Disaster Recovery & Idle Policy
 
-### 1. Daily PostgreSQL Backup Script
+### 1. OCI Always Free Idle Instance Policy
+Under Oracle terms, Always Free compute instances are monitored across a rolling 7-day window. Instances with 95th percentile CPU utilization < 20%, network < 20%, and memory < 20% may be stopped or reclaimed by the cloud provider.
+
+> [!WARNING]
+> **No Artificial Activity / Heartbeats**:
+> Never deploy synthetic load generators or fake activity scripts to bypass cloud provider idle policies. Instead, monitor legitimate application traffic and ensure robust disaster recovery mechanisms are maintained.
+
+### 2. Daily Local PostgreSQL Snapshot Script
 Create `/usr/local/bin/gatekeeper-backup.sh`:
 ```bash
 sudo tee /usr/local/bin/gatekeeper-backup.sh > /dev/null <<'EOF'
@@ -383,6 +389,9 @@ BACKUP_FILE="${BACKUP_DIR}/postgres_${TIMESTAMP}.dump.gz"
 
 docker exec -t gatekeeper-deploy-postgres pg_dump -U gatekeeper_app -Fc gatekeeper | gzip > "$BACKUP_FILE"
 chmod 600 "$BACKUP_FILE"
+
+# Maintain latest link
+ln -sf "$BACKUP_FILE" "${BACKUP_DIR}/postgres_latest.dump.gz"
 
 # Retain last 7 days of backups
 find "$BACKUP_DIR" -type f -name "postgres_*.dump.gz" -mtime +7 -delete
@@ -398,42 +407,41 @@ Add cron entry (`sudo crontab -e`):
 0 2 * * * /usr/local/bin/gatekeeper-backup.sh >> /var/log/gatekeeper-backup.log 2>&1
 ```
 
-### 2. Database Restore Runbook
-To restore a snapshot:
+### 3. Off-Host Backup Synchronization (Strictly ₹0 Cost)
+To protect against instance loss or reclamation, regularly pull backups to your local development machine:
+
+From your local machine (PowerShell or Bash):
 ```bash
-BACKUP_FILE="/var/backups/gatekeeper/postgres_YYYYMMDD_HHMMSS.dump.gz"
-gunzip -c "$BACKUP_FILE" | docker exec -i gatekeeper-deploy-postgres pg_restore -U gatekeeper_app -d gatekeeper --clean --if-exists
+# Pull the latest backup securely over SSH (uses free outbound OCI bandwidth)
+scp -i ~/.ssh/oci_gatekeeper_id_ed25519 ubuntu@<PUBLIC_IP>:/var/backups/gatekeeper/postgres_latest.dump.gz ./backups/
 ```
 
-### 3. Idle Instance Heartbeat (Prevent Oracle Free Reclamation)
-Oracle automatically reclaims Always Free instances if 7-day average CPU/memory/network utilization is below 20%. To ensure continuous availability without artificial synthetic load inflation, configure a gentle periodic heartbeat:
-
+*Alternative*: Use OCI Always Free Object Storage (10 GB free per tenancy) via OCI CLI:
 ```bash
-sudo tee /etc/systemd/system/gatekeeper-heartbeat.service > /dev/null <<'EOF'
-[Unit]
-Description=Gatekeeper Synthetic Self-Health Ping
-After=network.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/bin/curl -fsS http://127.0.0.1:8080/actuator/health
-EOF
-
-sudo tee /etc/systemd/system/gatekeeper-heartbeat.timer > /dev/null <<'EOF'
-[Unit]
-Description=Run Gatekeeper Health Heartbeat Every 10 Minutes
-
-[Timer]
-OnBootSec=5min
-OnUnitActiveSec=10min
-
-[Install]
-WantedBy=timers.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable --now gatekeeper-heartbeat.timer
+oci os object put --bucket-name gatekeeper-backups --file /var/backups/gatekeeper/postgres_latest.dump.gz --name "postgres_$(date +%Y%m%d).dump.gz"
 ```
+
+### 4. Safe Disaster Recovery & Restoration Procedure
+If the VM is lost, stopped, or reclaimed:
+1. Provision a new `VM.Standard.A1.Flex` instance following Sections B through D.
+2. Clone repository using the read-only deploy key (Section E).
+3. Generate new environment secrets or restore prior `.env` (Section F).
+4. Start PostgreSQL dependency:
+   ```bash
+   docker compose -f docker-compose.deploy.yml up -d postgres
+   ```
+5. Restore the database snapshot:
+   ```bash
+   gunzip -c postgres_latest.dump.gz | docker exec -i gatekeeper-deploy-postgres pg_restore -U gatekeeper_app -d gatekeeper --clean --if-exists
+   ```
+6. Start the full application stack & Caddy:
+   ```bash
+   docker compose -f docker-compose.deploy.yml up -d
+   sudo systemctl restart caddy
+   ```
+
+> [!NOTE]
+> Recovery is not considered verified until an actual restore succeeds on real infrastructure.
 
 ---
 

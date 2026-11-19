@@ -147,3 +147,11 @@ To prevent container logs from filling the 50 GB boot volume, configure Docker d
 }
 ```
 Restart Docker: `sudo systemctl restart docker`.
+
+### D. Off-Host Zero-Cost Backup Sync
+To protect against instance reclamation or loss, sync encrypted database snapshots off-host to the developer workstation:
+```bash
+# On operator workstation (PowerShell or Bash):
+scp -i ~/.ssh/oci_gatekeeper_id_ed25519 ubuntu@<PUBLIC-IP>:/var/backups/gatekeeper/postgres_latest.dump.gz ./backups/
+```
+Note: Recovery is not considered verified until an actual restore succeeds on real infrastructure.

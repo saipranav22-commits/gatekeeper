@@ -46,4 +46,4 @@ HEALTHCHECK --interval=20s --timeout=5s --start-period=30s --retries=3 \
 # Execute as non-root user
 USER appuser:appgroup
 
-ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar \"$@\"", "sh"]

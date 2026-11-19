@@ -247,3 +247,18 @@ jobs:
           GATEKEEPER_JWT_SECRET: ci_mock_jwt_secret_must_be_at_least_32_bytes_entropy
         run: |
           docker compose -f docker-compose.deploy.yml build
+
+      - name: Set up QEMU for ARM64 Emulation
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Validate ARM64 Dockerfile Syntax & Manifest Resolution
+        run: |
+          docker buildx build --platform linux/arm64 --check -f backend/Dockerfile backend
+          docker buildx build --platform linux/arm64 --check -f services/orders-service/Dockerfile services/orders-service
+          docker buildx build --platform linux/arm64 --check -f services/inventory-service/Dockerfile services/inventory-service
+          docker buildx build --platform linux/arm64 --check -f frontend/Dockerfile frontend

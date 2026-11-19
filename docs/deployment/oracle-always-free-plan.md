@@ -6,47 +6,61 @@ This architecture establishes a **₹0 / $0 recurring hosting cost** production 
 
 ---
 
-## 1. Verified Oracle Cloud Always Free Specifications
+## 1. Oracle Cloud Always Free Resource Entitlements & Console Quotas
 
-| Resource Dimension | Always Free Allowance | Gatekeeper Proposed Allocation | Safety Buffer / Remaining Headroom |
+Official Oracle Cloud documentation establishes the following Always Free resource limits:
+
+| Resource Dimension | Official Always Free Allowance | Gatekeeper Proposed Allocation | Tenancy Quota Verification Requirement |
 |---|---|---|---|
-| **Ampere A1 Compute** | 3,000 OCPU-hrs & 18,000 GB-hrs/mo (Up to 4 OCPUs / 24 GB RAM) | **2 OCPUs & 12 GB RAM** (~1,488 OCPU-hrs / ~8,928 GB-hrs/mo) | 2 OCPUs & 12 GB RAM (~1,512 OCPU-hrs / ~9,072 GB-hrs headroom) |
-| **Block Volume Storage** | 200 GB total (Boot + Block Volumes) | **50 GB Boot Volume** | 150 GB storage available |
-| **Outbound Data Transfer** | 10 TB / month free | < 50 GB / month (Estimated) | > 9,950 GB / month bandwidth remaining |
-| **Public IPv4 Address** | 1 free ephemeral or reserved IPv4 | **1 Dedicated Public IPv4** | Included at ₹0 |
-| **Cloud Firewalls** | Unlimited VCN Security Lists / NSGs | Port 22 (SSH), 80 (HTTP), 443 (HTTPS) | All internal ports blocked |
+| **Ampere A1 Compute** | Up to 4 OCPUs & 24 GB RAM tenancy pool (3,000 OCPU-hrs / 18,000 GB-hrs/month) | **2 OCPUs & 12 GB RAM** (`VM.Standard.A1.Flex`) | **Must verify in OCI Console** under *Limits, Quotas and Usage* before provisioning |
+| **Block Volume Storage** | 200 GB total across tenancy (Boot + Block Volumes) | **50 GB Boot Volume** | Verify total storage does not exceed 200 GB across all volumes |
+| **Outbound Data Transfer** | 10 TB / month free across all services | < 50 GB / month (Estimated API + SPA traffic) | Monitor in OCI Billing / Usage reports |
+| **Public IPv4 Address** | 1 free ephemeral or reserved IPv4 | **1 Dedicated Ephemeral/Reserved IPv4** | Verify no additional reserved IPs are allocated |
+| **Cloud Firewalls** | Unlimited Virtual Cloud Network Security Lists | Port 22 (SSH), 80 (HTTP), 443 (HTTPS) only | All internal microservice & DB ports dropped |
 
-> [!NOTE]
-> **Always Free Entitlement Math**:
-> In a 31-day month (744 hours), running a 2 OCPU / 12 GB RAM VM continuously consumes:
-> - `2 OCPU * 744 hours = 1,488 OCPU-hours` (well under the 1,500 OCPU-hrs half-allocation threshold and the 3,000 OCPU-hrs tenancy maximum).
-> - `12 GB RAM * 744 hours = 8,928 GB-hours` (well under the 9,000 GB-hrs half-allocation threshold and the 18,000 GB-hrs tenancy maximum).
-> This 2 OCPU / 12 GB sizing guarantees that even if a region or tenancy policy calculates quotas against conservative baseline limits, Gatekeeper will never exceed quotas or incur unexpected charges.
-
----
-
-## 2. Zero-Cost Risk Analysis & Mitigation
-
-### A. Idle Instance Reclamation
-- **Policy**: Oracle automatically reclaims Always Free compute instances if over a 7-day rolling window:
-  - 95th percentile CPU utilization is below 20%.
-  - Network utilization is below 20%.
-  - Memory utilization is below 20% (for A1 shapes).
-- **Mitigation Strategy**:
-  1. **Primary**: Upgrade the OCI account to **Pay-As-You-Go (PAYG)** after initial verification. In PAYG status, Always Free resource allowances remain 100% free (zero charge as long as usage is within the free limits), but instances are permanently immune to idle reclamation.
-  2. **Secondary**: Deploy a lightweight systemd background heartbeat timer executing synthetic local health checks against `/api/v1/health` and Actuator metrics every 15 minutes.
-
-### B. Regional Capacity Availability ("Out of Capacity")
-- **Risk**: In high-demand regions (e.g. Mumbai, Hyderabad, Frankfurt, Ashburn), Ampere A1 shapes may occasionally return "Out of capacity for shape VM.Standard.A1.Flex".
-- **Mitigation Strategy**: If immediate A1 capacity is constrained, choose alternate availability domains or retry provisioning via OCI CLI loop.
-
-### C. Credit Card Verification
-- **Policy**: Registration requires a credit card for identity verification ($1 temporary authorization hold reversed immediately).
-- **Zero-Cost Guarantee**: Setting zero billing alarms and strict budget limits in the OCI billing console guarantees zero surprise charges.
+> [!IMPORTANT]
+> **Entitlement & Quota Verification Notice**:
+> - The 4 OCPU / 24 GB allowance represents the **total tenancy pool** for Ampere A1 resources. Sizing our production host at **2 OCPUs and 12 GB RAM** consumes approximately 1,488 OCPU-hours and 8,928 GB-hours per 31-day month.
+> - Actual available quotas vary by region and tenancy status. Operators must never assume quotas are granted automatically; check **Governance & Administration -> Limits, Quotas and Usage -> Compute -> Cores for Standard.A1 Based VM and BM Instances** in the OCI Console.
+> - **Zero-Cost Policy**: Estimated resource usage alone does not guarantee a ₹0 invoice. The operator must adhere to the billable-risk checklist below to avoid incidental charges.
 
 ---
 
-## 3. End-to-End System Topology
+## 2. Billable Resource Risks & Prevention Checklist
+
+To ensure strict ₹0 recurring cost, the following risks must be actively managed:
+
+| Billable Resource Risk | Failure Mode | Prevention Control |
+|---|---|---|
+| **Paid Shape Selection** | Selecting Intel/AMD shapes (e.g. `VM.Standard3.Flex`, `VM.Standard.E4.Flex`) | Only select **Ampere `VM.Standard.A1.Flex`** bearing the "Always Free Eligible" badge. |
+| **Storage Over-Allocation** | Allocating default or custom boot volumes exceeding 200 GB total across tenancy | Specify custom boot volume size: **50 GB**. Do not create unnecessary block volumes. |
+| **Orphaned Boot Volumes** | Deleting a VM while leaving its boot volume detached in the tenancy | When terminating an instance, always check: **"Permanently delete the attached boot volume"**. |
+| **Additional Public IPv4** | Allocating secondary reserved public IPs | Use only the **1 free public IPv4** assigned at instance creation. Never allocate additional reserved IPs. |
+| **Paid Cloud Services** | Provisioning a standard Flexible Load Balancer or paid OCI Database | Ingress is terminated natively on-host via **Caddy**; no OCI Load Balancer is provisioned. |
+| **Billing Alerts** | Resource drift unnoticed until invoice generation | Set an OCI Budget alert at **$1.00 (or ₹100)** with email notification at 10% spend forecast. |
+
+---
+
+## 3. Provider Idle Reclamation Policy & Disaster Recovery
+
+### OCI Always Free Idle Instance Policy
+Under official Oracle terms, Always Free compute instances are monitored on a rolling 7-day window. An instance is classified as idle if:
+1. 95th percentile CPU utilization is below 20%.
+2. Network utilization is below 20%.
+3. Memory utilization is below 20% (for Ampere A1 shapes).
+
+If classified as idle, Oracle may stop or reclaim the instance after notification.
+
+### Safe Engineering Response (No Artificial Load Inflation)
+- **Do NOT deploy artificial heartbeat scripts, fake load generators, or synthetic ping loops** to trick cloud monitoring systems.
+- Rely on legitimate operator, API consumer, and dashboard traffic.
+- Design for recovery: Assume the VM can be terminated or stopped by the cloud provider.
+- Implement automated off-host backups (`pg_dump` exported to developer workstation or OCI 10 GB free Object Storage).
+- Maintain an executable, tested runbook (`docs/deployment/oracle-first-deployment-runbook.md`) allowing complete redeployment from Git and database restore in under 15 minutes.
+
+---
+
+## 4. End-to-End System Topology
 
 ```mermaid
 flowchart TD
@@ -89,7 +103,7 @@ flowchart TD
 
 ---
 
-## 4. Resource Allocation on 2 OCPU / 12 GB RAM Host
+## 5. Host Resource Allocation on 2 OCPU / 12 GB RAM
 
 | Service / Layer | Memory Reservation | Memory Hard Ceiling | CPU Allocation | Storage Usage |
 |---|---|---|---|---|
@@ -103,4 +117,4 @@ flowchart TD
 | **`frontend`** (Nginx / SPA) | 64 MB | 128 MB | 0.5 vCPU | ~50 MB |
 | **Log Rotation & Backups** | N/A | N/A | N/A | ~5.0 GB |
 | **Total Stack Allocated** | **~1.88 GB** | **~3.56 GB** | **3.75 vCPUs** | **~12.3 GB of 50 GB** |
-| **Free Host Buffer** | **~10.12 GB** | **~8.44 GB** | **Substantial Headroom** | **> 37 GB free disk** |
+| **Available Host Memory Buffer** | **~10.12 GB** | **~8.44 GB** | **Conservative load profile** | **> 37 GB free disk** |

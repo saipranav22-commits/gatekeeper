@@ -21,7 +21,20 @@ Every container image utilized in Gatekeeper production deployment provides nati
 
 ---
 
-## 3. Native Binary & Dependency Verification
+## 3. Four-Tier Verification Hierarchy
+
+To ensure strict engineering precision, ARM64 readiness is evaluated across four distinct tiers:
+
+| Verification Tier | Scope & Methodology | Current Status | Notes |
+|---|---|:---:|---|
+| **Tier 1: Manifest Compatibility** | Verification that base images in Docker Hub publish official `linux/arm64` manifests. | **VERIFIED** | All 6 upstream base images provide official multi-arch manifests. |
+| **Tier 2: Dockerfile Build Success** | Validation of Dockerfile build process and syntax across services. | **VERIFIED (x86_64) / PENDING (ARM64)** | Successfully builds on `amd64` in CI. ARM64 build readiness prepared via Buildx syntax linting. |
+| **Tier 3: Actual Image Runtime** | Container startup and process execution on a native ARM64 Linux kernel. | **PENDING ARM64 HOST** | Requires execution on native ARM64 hardware (e.g. OCI Ampere A1 VM). Cannot be claimed prior to host provisioning. |
+| **Tier 4: End-to-End Application Startup** | Full multi-service lifecycle: Spring Boot boots, Flyway applies migrations, Redis authenticates, routes initialize, and health checks pass. | **PENDING ARM64 HOST** | Verified in x86_64 CI; requires live validation on the target OCI VM during first deployment. |
+
+---
+
+## 4. Native Binary & Dependency Verification
 
 ### Java 21 Backend & Microservices
 - **Bytecode Portability**: Java `.class` files compiled with `javac` run identically across `amd64` and `arm64` architectures.
@@ -34,14 +47,12 @@ Every container image utilized in Gatekeeper production deployment provides nati
 
 ---
 
-## 4. GitHub Actions CI vs Cloud VM Build Strategy
+## 5. Build & CI Strategy
 
-To build and run Gatekeeper on ARM64:
-
-1. **Option A: Build on the Oracle ARM64 VM (Recommended)**:
-   - When the user clones the repository onto the Ampere A1 instance, `docker compose -f docker-compose.deploy.yml build` automatically builds native `linux/arm64` images using the VM's native 2–4 ARM64 cores and 12 GB RAM.
-   - **Advantage**: Zero QEMU emulation overhead; 100% native build speed.
-2. **Option B: Multi-Platform Buildx in GitHub Actions**:
-   - Uses `docker/setup-qemu-action@v3` and `docker/setup-buildx-action@v3` on standard `ubuntu-latest` x86 runners to produce multi-platform images (`linux/amd64,linux/arm64`).
-   - **Trade-off**: Java and Maven compilation under QEMU emulation can be 3x to 5x slower, potentially extending CI run times.
-   - **Recommendation**: Reserve CI for `amd64` unit/integration test validation, and let the 12 GB OCI instance build images natively upon deployment.
+1. **Native On-Host Build (Primary Deployment Strategy)**:
+   - When the repository is cloned onto the Ampere A1 instance, `docker compose -f docker-compose.deploy.yml build` builds native `linux/arm64` images using the VM's native ARM64 cores and 12 GB RAM.
+   - **Advantage**: Fast, native compilation without QEMU emulation overhead.
+2. **GitHub Actions CI Build Validation**:
+   - Standard CI builds and validates on `ubuntu-latest` (x86_64).
+   - Multi-arch Dockerfile syntax and manifest resolution are checked via Docker Buildx (`--check`).
+   - Image publishing is deliberately disabled; no images are pushed to public or private registries.
