@@ -198,3 +198,7 @@ networks:
   gatekeeper-deploy-net:
     name: gatekeeper-deploy-network
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+          gateway: 172.28.0.1

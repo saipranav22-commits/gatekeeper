@@ -13,11 +13,12 @@ describe('Nginx Reverse Proxy Security Configuration', () => {
     expect(nginxConf).not.toMatch(/192\.168\.0\.0\/16\s+1;/);
   });
 
-  it('declares explicit loopback proxies with default deny for untrusted connections', () => {
+  it('declares explicit loopback proxies and deterministic host bridge gateway with default deny', () => {
     expect(nginxConf).toMatch(/geo\s+\$remote_addr\s+\$trusted_edge_proxy\s*\{/);
     expect(nginxConf).toMatch(/default\s+0;/);
     expect(nginxConf).toMatch(/127\.0\.0\.1\s+1;/);
     expect(nginxConf).toMatch(/::1\s+1;/);
+    expect(nginxConf).toMatch(/172\.28\.0\.1\/32\s+1;/);
   });
 
   it('implements protocol sanitization protecting X-Forwarded-Proto', () => {

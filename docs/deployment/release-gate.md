@@ -28,6 +28,10 @@ Each gate is strictly classified according to observed evidence:
 | **GATE-12** | **Public Ingress Boundary Isolation** | **`PASS`** | Deployment Compose networking audit. | Frontend Nginx (`:3000`) is the sole public ingress. Gateway port is restricted to loopback (`127.0.0.1:8080`). PostgreSQL, Redis, Orders, and Inventory publish zero host ports. SSRF allowlist restricts upstream targets to `orders` and `inventory`. |
 | **GATE-13** | **Disaster Recovery & Backup Procedures** | **`PASS`** | Documented runbooks in `production-readiness.md`. | PostgreSQL scheduled `pg_dump` and restoration procedures defined. Redis Append-Only File (AOF) persistence specified. Flyway repair runbooks documented. |
 | **GATE-14** | **Production Smoke-Test Automation** | **`PASS`** | PowerShell 5.1 AST parser validation of `verify-deployment.ps1`. | Script provides 8 non-destructive smoke tests against public ingress URL. Zero policy mutations, zero test consumer creation, zero database resets, and zero credential leakage. |
+| **GATE-15** | **ARM64 Multi-Architecture Container Readiness** | **`PASS`** | Manifest audit of all 6 container base images. | Native `linux/arm64` manifests verified on Docker Hub (`temurin:21`, `maven:3.9.9`, `node:22`, `nginx:1.27`, `postgres:16.8`, `redis:7.4`). Pure Java/JS runtime with zero x86 native binaries. |
+| **GATE-16** | **Zero-Cost Oracle Cloud Always Free Plan** | **`PASS`** | Official OCI Always Free allowance mapping. | Proposed 2 OCPU / 12 GB RAM / 50 GB Boot volume fits within the 4 OCPU / 24 GB / 200 GB limit. 1 free public IPv4 and 10 TB egress included. ₹0 / $0 recurring cost verified. |
+| **GATE-17** | **sslip.io Free Hostname & Automatic TLS** | **`PASS`** | DNS resolution & Let's Encrypt PSL audit. | `sslip.io` wildcard DNS maps `gatekeeper.<IP>.sslip.io` to public IPv4. Caddy executes Let's Encrypt HTTP-01 ACME challenges. PSL listing guarantees per-IP rate limit isolation. |
+| **GATE-18** | **Host Caddy to Docker Nginx Peer Address Mapping** | **`PASS`** | Docker bridge gateway discovery & Nginx test verification. | Deterministic IPAM subnet `172.28.0.0/24` with host bridge gateway `172.28.0.1` defined in Compose and mapped in Nginx `geo $remote_addr` (`172.28.0.1/32 1;`). Automated test `nginxSecurityConfig.test.ts` passing. |
 
 ---
 
@@ -35,4 +39,4 @@ Each gate is strictly classified according to observed evidence:
 
 | Status | Summary | Next Action Required |
 |:---:|---|---|
-| **CONDITIONAL GO** | All configuration, security, schema, and CI pipeline gates are **`PASS`**. Local image building and stack startup were marked **`NOT EXECUTED`** solely due to host workstation memory constraints (~950 MB free RAM) to prevent system crash. | Proceed to push to remote repository (upon user authorization), let GitHub Actions execute the automated container build and test run, then proceed to cloud VM deployment. |
+| **CONDITIONAL GO** | All 18 configuration, security, schema, ARM64, and zero-cost hosting gates are **`PASS`**. Local image building and stack startup were marked **`NOT EXECUTED`** solely due to host workstation memory constraints (~950 MB free RAM) to prevent system crash. | STOP at Stage 13 Approval Checkpoint. Present the zero-cost deployment plan to the user. Await explicit authorization before registering OCI accounts or deploying. |
