@@ -203,7 +203,7 @@ export const Analytics: React.FC = () => {
 
   // Sorted Top Consumers List
   const sortedConsumers = useMemo(() => {
-    if (!topConsumers) return []
+    if (!topConsumers || !Array.isArray(topConsumers)) return []
     const copy = [...topConsumers]
     copy.sort((a, b) => {
       let valA = 0

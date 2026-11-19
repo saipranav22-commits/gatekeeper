@@ -95,8 +95,9 @@ export const PolicyStudio: React.FC = () => {
   })
 
   // Set default policy key if none selected
-  const activeKey = selectedPolicyKey || (definitions && definitions.length > 0 ? definitions[0].policyKey : '')
-  const currentDef = definitions?.find((d) => d.policyKey === activeKey)
+  const defsList = Array.isArray(definitions) ? definitions : []
+  const activeKey = selectedPolicyKey || (defsList.length > 0 ? defsList[0].policyKey : '')
+  const currentDef = defsList.find((d) => d.policyKey === activeKey)
 
   // 2. Fetch Versions for selected policy definition
   const {
@@ -108,14 +109,16 @@ export const PolicyStudio: React.FC = () => {
     enabled: !!activeKey,
   })
 
+  const versionsList = Array.isArray(versions) ? versions : []
+
   // Selected Version for rule inspection
   const effectiveVersionNumber =
     selectedVersionNumber != null
       ? selectedVersionNumber
       : currentDef?.activeVersionNumber != null
       ? currentDef.activeVersionNumber
-      : versions && versions.length > 0
-      ? versions[0].versionNumber
+      : versionsList.length > 0
+      ? versionsList[0].versionNumber
       : null
 
   const { data: currentVersion, isLoading: currentVersionLoading } = useQuery({
@@ -351,7 +354,7 @@ export const PolicyStudio: React.FC = () => {
             </label>
             {defsLoading ? (
               <Skeleton className="h-9 w-full" />
-            ) : !definitions || definitions.length === 0 ? (
+            ) : !defsList || defsList.length === 0 ? (
               <div className="text-xs text-titanium-muted italic">No policy definitions found.</div>
             ) : (
               <select
@@ -364,7 +367,7 @@ export const PolicyStudio: React.FC = () => {
                 }}
                 className="w-full px-3 py-2 text-xs bg-surface-elevated border border-moss/60 rounded-lg text-silver-frost font-medium focus:outline-none focus:border-emerald"
               >
-                {definitions.map((def) => (
+                {defsList.map((def) => (
                   <option key={def.id} value={def.policyKey}>
                     {def.name} ({def.policyKey})
                   </option>
@@ -470,13 +473,13 @@ export const PolicyStudio: React.FC = () => {
       </div>
 
       {/* 3. Version History Ribbon */}
-      {versions && versions.length > 0 && (
+      {versionsList && versionsList.length > 0 && (
         <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
           <span className="text-xs font-medium text-titanium shrink-0 flex items-center gap-1">
             <History className="w-3.5 h-3.5" />
             Versions:
           </span>
-          {versions.map((ver) => {
+          {versionsList.map((ver) => {
             const isSelected = effectiveVersionNumber === ver.versionNumber
             const isActive = currentDef?.activeVersionNumber === ver.versionNumber
             const isShadow = currentDef?.shadowVersionNumber === ver.versionNumber

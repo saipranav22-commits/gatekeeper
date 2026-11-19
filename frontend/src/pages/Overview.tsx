@@ -319,7 +319,7 @@ export const Overview: React.FC = () => {
       )}
 
       {/* 2. Resilience & Upstream Services Status Bar */}
-      {resilienceData && resilienceData.length > 0 && (
+      {resilienceData && Array.isArray(resilienceData) && resilienceData.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {resilienceData.map((route) => {
             const isTripped =
@@ -580,7 +580,7 @@ export const Overview: React.FC = () => {
                 <p className="text-sm font-medium text-silver-frost">Failed to retrieve time-series metrics</p>
                 <span className="text-xs text-titanium mt-1 font-mono">Backend returned error response</span>
               </div>
-            ) : !timeSeries || timeSeries.length === 0 ? (
+            ) : !timeSeries || !Array.isArray(timeSeries) || timeSeries.length === 0 ? (
               <div className="h-72 flex flex-col items-center justify-center text-titanium text-center p-4">
                 <Radio className="w-8 h-8 text-titanium-muted mb-2 animate-pulse" />
                 <p className="text-sm font-medium text-silver-frost">No gateway traffic logged in this time window</p>
@@ -771,7 +771,7 @@ export const Overview: React.FC = () => {
               <p className="text-sm font-medium text-signal-red">Unable to retrieve consumer rankings</p>
               <span className="text-xs mt-1 font-mono">Verify database connection and JWT authentication</span>
             </div>
-          ) : !topConsumers || topConsumers.length === 0 ? (
+          ) : !topConsumers || !Array.isArray(topConsumers) || topConsumers.length === 0 ? (
             <div className="p-8 text-center text-titanium">
               <p className="text-sm font-medium text-silver-frost">No consumer traffic recorded in this period</p>
               <span className="text-xs mt-1 text-titanium-muted">
