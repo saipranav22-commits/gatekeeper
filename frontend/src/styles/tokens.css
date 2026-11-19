@@ -1,0 +1,80 @@
+/**
+ * Gatekeeper Enterprise Design System — Obsidian Titanium
+ *
+ * Visual Palette Ratios:
+ * - 55% Obsidian Black (#070A09) - Main Canvas & Application Background
+ * - 20% Graphite Black (#131A18) - Layered Panels, Cards, Elevated Surfaces
+ * - 10% Titanium Silver Grey (#899693) - Technical Metadata, Secondary Text, Inactive Icons
+ * -  7% Muted Moss (#375B48) - Structural Borders, Separators, Atmospheric Depth
+ * -  5% Electric Emerald (#31E99A) - Primary Actions, Selection States, Focus Rings, Success
+ * -  2% Frosted Mint (#B8F3D6) - Soft Informational Highlights, Secondary Accents
+ * -  1% Silver Frost (#DCE4E1) - Primary Headings, High-Priority Data Readouts
+ * Critical Accents:
+ * - Signal Red (#F05460) - Incidents, Revocations, Destructive Operations
+ * - Warning Amber (#E9B35A) - Throttle Warnings, Degraded States, Circuit Alerts
+ */
+
+:root {
+  /* Core Raw Palette */
+  --color-obsidian: #070A09;
+  --color-graphite: #131A18;
+  --color-graphite-elevated: #1A2421;
+  --color-graphite-hover: #22302C;
+  --color-titanium: #899693;
+  --color-titanium-muted: #5C6865;
+  --color-moss: #375B48;
+  --color-moss-subtle: #1E3429;
+  --color-moss-glow: rgba(49, 233, 154, 0.12);
+  --color-emerald: #31E99A;
+  --color-emerald-hover: #28C984;
+  --color-emerald-active: #1FA36A;
+  --color-mint: #B8F3D6;
+  --color-silver-frost: #DCE4E1;
+  --color-signal-red: #F05460;
+  --color-signal-red-subtle: rgba(240, 84, 96, 0.14);
+  --color-warning-amber: #E9B35A;
+  --color-warning-amber-subtle: rgba(233, 179, 90, 0.14);
+
+  /* Semantic Layout Surfaces */
+  --bg-canvas: var(--color-obsidian);
+  --bg-surface: var(--color-graphite);
+  --bg-surface-elevated: var(--color-graphite-elevated);
+  --bg-surface-hover: var(--color-graphite-hover);
+  --bg-input: #0B0F0E;
+
+  /* Semantic Text & Typography */
+  --text-primary: var(--color-silver-frost);
+  --text-secondary: var(--color-titanium);
+  --text-muted: var(--color-titanium-muted);
+  --text-accent: var(--color-emerald);
+  --text-inverse: #070A09;
+
+  /* Semantic Borders & Dividers */
+  --border-subtle: var(--color-moss-subtle);
+  --border-strong: var(--color-moss);
+  --border-focus: var(--color-emerald);
+
+  /* Semantic Status Tokens */
+  --status-healthy: var(--color-emerald);
+  --status-warning: var(--color-warning-amber);
+  --status-critical: var(--color-signal-red);
+  --status-info: var(--color-mint);
+
+  /* Glows and Shadows */
+  --glow-emerald: 0 0 20px rgba(49, 233, 154, 0.25);
+  --glow-emerald-sm: 0 0 10px rgba(49, 233, 154, 0.2);
+  --glow-red: 0 0 20px rgba(240, 84, 96, 0.25);
+  --shadow-surface: 0 4px 20px -2px rgba(0, 0, 0, 0.6);
+  --shadow-modal: 0 10px 40px -4px rgba(0, 0, 0, 0.8), 0 0 1px 1px var(--border-strong);
+
+  /* Radius Scale */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-full: 9999px;
+
+  /* Fonts */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, SFMono-Regular, monospace;
+}

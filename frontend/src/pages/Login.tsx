@@ -78,34 +78,34 @@ export const Login: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen w-screen flex items-center justify-center bg-slate-950 p-4 relative overflow-hidden">
-      {/* Background visual accents */}
-      <div className="absolute top-1/4 left-1/3 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/4 right-1/3 w-96 h-96 bg-primary-700/10 rounded-full blur-3xl pointer-events-none" />
+    <div className="min-h-screen w-screen flex items-center justify-center bg-canvas p-4 relative overflow-hidden">
+      {/* Obsidian Titanium atmospheric radial accents */}
+      <div className="absolute top-1/4 left-1/3 w-96 h-96 bg-emerald/5 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-1/4 right-1/3 w-96 h-96 bg-moss/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="w-full max-w-md relative z-10 space-y-6">
         {/* Brand identity header */}
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 to-indigo-400 text-white shadow-xl shadow-indigo-500/25 mb-2">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-surface border border-emerald/30 text-emerald shadow-emerald-sm mb-2">
             <ShieldCheck className="w-8 h-8" />
           </div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Gatekeeper Admin</h1>
-          <p className="text-xs text-slate-400">High-Performance API Gateway & Quota Management</p>
+          <h1 className="text-2xl font-bold text-silver-frost tracking-tight">Gatekeeper Admin</h1>
+          <p className="text-xs text-titanium font-mono">High-Performance API Gateway & Quota Management</p>
         </div>
 
         {/* Login form card */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl backdrop-blur-md space-y-5">
+        <div className="bg-surface border border-moss/60 rounded-2xl p-6 sm:p-8 shadow-modal-dark backdrop-blur-md space-y-5">
           <div className="space-y-1">
-            <h2 className="text-base font-semibold text-white">Operator Sign In</h2>
-            <p className="text-xs text-slate-400">Enter your administrative credentials to continue</p>
+            <h2 className="text-base font-semibold text-silver-frost">Operator Sign In</h2>
+            <p className="text-xs text-titanium">Enter your administrative credentials to continue</p>
           </div>
 
           {errorMessage && (
             <div
               className={`p-3.5 rounded-lg border text-xs flex items-start gap-2.5 ${
                 isLockedOut
-                  ? 'bg-rose-950/40 border-rose-800/80 text-rose-300'
-                  : 'bg-amber-950/40 border-amber-800/80 text-amber-300'
+                  ? 'bg-signal-red/10 border-signal-red/30 text-signal-red'
+                  : 'bg-warning-amber/10 border-warning-amber/30 text-warning-amber'
               }`}
               role="alert"
             >
@@ -123,9 +123,9 @@ export const Login: React.FC = () => {
                   autoComplete="username"
                   {...register('username')}
                   error={errors.username?.message}
-                  className="bg-slate-950 border-slate-700 text-white placeholder:text-slate-500"
+                  className="bg-input border-moss/60 text-silver-frost placeholder:text-titanium-muted"
                 />
-                <User className="w-4 h-4 text-slate-500 absolute right-3 top-8 pointer-events-none" />
+                <User className="w-4 h-4 text-titanium absolute right-3 top-8 pointer-events-none" />
               </div>
             </div>
 
@@ -138,9 +138,9 @@ export const Login: React.FC = () => {
                   autoComplete="current-password"
                   {...register('password')}
                   error={errors.password?.message}
-                  className="bg-slate-950 border-slate-700 text-white placeholder:text-slate-500"
+                  className="bg-input border-moss/60 text-silver-frost placeholder:text-titanium-muted"
                 />
-                <Lock className="w-4 h-4 text-slate-500 absolute right-3 top-8 pointer-events-none" />
+                <Lock className="w-4 h-4 text-titanium absolute right-3 top-8 pointer-events-none" />
               </div>
             </div>
 
@@ -148,7 +148,7 @@ export const Login: React.FC = () => {
               type="submit"
               variant="primary"
               size="lg"
-              className="w-full mt-2 font-semibold shadow-md bg-indigo-600 hover:bg-indigo-500"
+              className="w-full mt-2"
               isLoading={isSubmitting}
             >
               Sign In to Gateway
@@ -156,16 +156,16 @@ export const Login: React.FC = () => {
           </form>
 
           {/* Security & In-Memory Session Notice */}
-          <div className="pt-4 border-t border-slate-800 text-[11px] text-slate-400 flex items-start gap-2 leading-relaxed">
-            <Info className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+          <div className="pt-4 border-t border-moss-subtle text-[11px] text-titanium flex items-start gap-2 leading-relaxed bg-surface-elevated/40 p-3 rounded-lg border border-moss-subtle/50">
+            <Info className="w-4 h-4 text-emerald shrink-0 mt-0.5" />
             <span>
               <strong>Security Policy:</strong> Gatekeeper strictly maintains admin JWTs in volatile memory. Tokens are never persisted to localStorage or sessionStorage. Page reload terminates the active session.
             </span>
           </div>
         </div>
 
-        <div className="text-center text-xs text-slate-400">
-          Gatekeeper Gateway Engine • Phase 4 Production Frontend
+        <div className="text-center text-xs text-titanium font-mono">
+          Gatekeeper Gateway Engine • Phase 7 Production Control Plane
         </div>
       </div>
     </div>

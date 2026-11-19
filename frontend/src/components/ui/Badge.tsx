@@ -9,14 +9,14 @@ export const Badge: React.FC<BadgeProps> = ({ className, variant = 'default', ch
   return (
     <span
       className={cn(
-        'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider',
-        variant === 'default' && 'bg-slate-100 text-slate-700 border border-slate-200',
-        variant === 'success' && 'bg-emerald-50 text-emerald-700 border border-emerald-200/80',
-        variant === 'warning' && 'bg-amber-50 text-amber-700 border border-amber-200/80',
-        variant === 'danger' && 'bg-rose-50 text-rose-700 border border-rose-200/80',
-        variant === 'info' && 'bg-sky-50 text-sky-700 border border-sky-200/80',
-        variant === 'purple' && 'bg-indigo-50 text-indigo-700 border border-indigo-200/80',
-        variant === 'slate' && 'bg-slate-200 text-slate-800 border border-slate-300',
+        'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider tabular-nums transition-colors',
+        variant === 'default' && 'bg-surface-elevated text-titanium border border-moss-subtle',
+        variant === 'success' && 'bg-emerald/10 text-emerald border border-emerald/30 shadow-xs',
+        variant === 'warning' && 'bg-warning-amber/10 text-warning-amber border border-warning-amber/30',
+        variant === 'danger' && 'bg-signal-red/10 text-signal-red border border-signal-red/30',
+        variant === 'info' && 'bg-mint/10 text-mint border border-mint/30',
+        variant === 'purple' && 'bg-purple-950/40 text-purple-300 border border-purple-800/40',
+        variant === 'slate' && 'bg-surface text-silver-frost border border-moss',
         className
       )}
       {...props}
