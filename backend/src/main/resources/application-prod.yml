@@ -39,7 +39,7 @@ spring:
   # Flyway Database Migration
   flyway:
     enabled: true
-    baseline-on-migrate: true
+    baseline-on-migrate: ${FLYWAY_BASELINE_ON_MIGRATE:false}
     locations: classpath:db/migration
 
   # Production Authenticated Redis

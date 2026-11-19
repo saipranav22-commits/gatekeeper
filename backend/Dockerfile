@@ -29,8 +29,8 @@ RUN addgroup -g 10001 -S appgroup && \
 
 WORKDIR /app
 
-# Copy compiled JAR from builder stage
-COPY --from=builder --chown=appuser:appgroup /build/target/*.jar /app/app.jar
+# Copy compiled application JAR from builder stage
+COPY --from=builder --chown=appuser:appgroup /build/target/gatekeeper-backend-*.jar /app/app.jar
 
 # JVM memory management tailored for container cgroups and low-memory environments
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0 -XX:+ExitOnOutOfMemoryError -XX:+UseG1GC -Djava.security.egd=file:/dev/./urandom" \

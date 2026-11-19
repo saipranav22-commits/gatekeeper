@@ -29,8 +29,8 @@ RUN addgroup -g 10001 -S appgroup && \
 
 WORKDIR /app
 
-# Copy compiled JAR
-COPY --from=builder --chown=appuser:appgroup /build/target/*.jar /app/app.jar
+# Copy compiled application JAR
+COPY --from=builder --chown=appuser:appgroup /build/target/inventory-service-*.jar /app/app.jar
 
 # JVM memory tuning for lightweight microservice
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0 -XX:+ExitOnOutOfMemoryError -XX:+UseG1GC -Djava.security.egd=file:/dev/./urandom" \
