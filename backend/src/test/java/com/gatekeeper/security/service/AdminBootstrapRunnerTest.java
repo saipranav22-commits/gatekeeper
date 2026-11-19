@@ -7,7 +7,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.boot.DefaultApplicationArguments;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.mock.env.MockEnvironment;
+import org.mockito.Mockito;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -23,6 +25,34 @@ class AdminBootstrapRunnerTest {
 
     @Mock
     private AdminBootstrapService adminBootstrapService;
+
+    @Test
+    @DisplayName("Verify Spring IoC container can instantiate AdminBootstrapRunner bean")
+    void verifySpringBeanInstantiation() {
+        new ApplicationContextRunner()
+            .withBean(AdminUserRepository.class, () -> Mockito.mock(AdminUserRepository.class))
+            .withBean(AdminBootstrapService.class, () -> Mockito.mock(AdminBootstrapService.class))
+            .withUserConfiguration(AdminBootstrapRunner.class)
+            .run(context -> {
+                assertThat(context).hasNotFailed();
+                assertThat(context).hasSingleBean(AdminBootstrapRunner.class);
+            });
+    }
+
+    @Test
+    @DisplayName("Verify Spring IoC container injects Environment and evaluates bootstrap property")
+    void verifySpringBeanWithEnvironment() {
+        new ApplicationContextRunner()
+            .withPropertyValues("gatekeeper.bootstrap.enabled=true")
+            .withBean(AdminUserRepository.class, () -> Mockito.mock(AdminUserRepository.class))
+            .withBean(AdminBootstrapService.class, () -> Mockito.mock(AdminBootstrapService.class))
+            .withUserConfiguration(AdminBootstrapRunner.class)
+            .run(context -> {
+                assertThat(context).hasNotFailed();
+                AdminBootstrapRunner runner = context.getBean(AdminBootstrapRunner.class);
+                assertThat(runner.isBootstrapRequested(new DefaultApplicationArguments())).isTrue();
+            });
+    }
 
     @Test
     @DisplayName("Runner exits immediately when --gatekeeper.bootstrap.enabled is absent")
