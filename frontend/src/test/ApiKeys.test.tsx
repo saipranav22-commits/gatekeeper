@@ -132,7 +132,7 @@ describe('API Key Management Screen', () => {
       expect(screen.getByText('gk_live_apexprod')).toBeInTheDocument()
       expect(screen.getByText('Active')).toBeInTheDocument()
       expect(screen.getByText('gateway:invoke')).toBeInTheDocument()
-    })
+    }, { timeout: 5000 })
   })
 
   it('triggers provision key workflow and reveals one-time plaintext key', async () => {

@@ -15,6 +15,8 @@ const ConsumerDetail = React.lazy(() => import('@/pages/ConsumerDetail').then((m
 const ApiKeys = React.lazy(() => import('@/pages/ApiKeys').then((m) => ({ default: m.ApiKeys })))
 const Plans = React.lazy(() => import('@/pages/Plans').then((m) => ({ default: m.Plans })))
 const PolicyStudio = React.lazy(() => import('@/pages/PolicyStudio').then((m) => ({ default: m.PolicyStudio })))
+const ReliabilityWorkbench = React.lazy(() => import('@/pages/ReliabilityWorkbench').then((m) => ({ default: m.ReliabilityWorkbench })))
+const ChaosLab = React.lazy(() => import('@/pages/ChaosLab').then((m) => ({ default: m.ChaosLab })))
 const Analytics = React.lazy(() => import('@/pages/Analytics').then((m) => ({ default: m.Analytics })))
 const Security = React.lazy(() => import('@/pages/Security').then((m) => ({ default: m.Security })))
 const NotFound = React.lazy(() => import('@/pages/NotFound').then((m) => ({ default: m.NotFound })))
@@ -66,6 +68,8 @@ export const App: React.FC = () => {
                     <Route path="/api-keys" element={<ApiKeys />} />
                     <Route path="/plans" element={<Plans />} />
                     <Route path="/policies" element={<PolicyStudio />} />
+                    <Route path="/reliability" element={<ReliabilityWorkbench />} />
+                    <Route path="/chaos" element={<ChaosLab />} />
                     <Route path="/analytics" element={<Analytics />} />
                     <Route path="/security" element={<Security />} />
                     <Route path="/404" element={<NotFound />} />

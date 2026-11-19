@@ -12,6 +12,8 @@ import {
   LogOut,
   PlusCircle,
   Sliders,
+  Network,
+  Flame,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -112,6 +114,30 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
       },
     },
     {
+      id: 'nav-reliability',
+      title: 'Reliability & Service Topology',
+      description: 'Configured topology, circuit breakers, bulkhead permits, and operational events',
+      category: 'Navigation',
+      icon: Network,
+      keywords: ['topology', 'resilience', 'circuit breaker', 'bulkhead', 'retry', 'health', 'timeline', 'sre'],
+      perform: () => {
+        navigate('/reliability')
+        onClose()
+      },
+    },
+    {
+      id: 'nav-chaos',
+      title: 'Chaos Engineering Laboratory',
+      description: 'Controlled resilience scenarios, failure injection, and Phase 5D benchmark evidence',
+      category: 'Navigation',
+      icon: Flame,
+      keywords: ['chaos', 'failure injection', 'scenario', 'benchmarks', 'experiment', 'orders outage', 'redis failure'],
+      perform: () => {
+        navigate('/chaos')
+        onClose()
+      },
+    },
+    {
       id: 'nav-security',
       title: 'Security & Access Control',
       description: 'Admin credentials, active sessions, and gateway security parameters',
@@ -158,6 +184,30 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
             keywords: ['simulate rule', 'dry run', 'inspect policy', 'test route'],
             perform: () => {
               navigate('/policies')
+              onClose()
+            },
+          },
+          {
+            id: 'action-view-topology',
+            title: 'Inspect Service Topology',
+            description: 'View real-time dependency status and circuit breaker overlays',
+            category: 'Quick Actions' as const,
+            icon: Network,
+            keywords: ['topology', 'dependency graph', 'service map', 'upstream'],
+            perform: () => {
+              navigate('/reliability?tab=topology')
+              onClose()
+            },
+          },
+          {
+            id: 'action-view-chaos',
+            title: 'Review Chaos Benchmarks',
+            description: 'Explore Phase 5D resilience benchmark evidence and assertions',
+            category: 'Quick Actions' as const,
+            icon: Flame,
+            keywords: ['chaos', 'failure injection', 'benchmarks', 'resilience test'],
+            perform: () => {
+              navigate('/chaos')
               onClose()
             },
           },

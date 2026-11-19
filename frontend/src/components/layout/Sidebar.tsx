@@ -12,6 +12,8 @@ import {
   LogOut,
   ShieldCheck,
   Sliders,
+  Network,
+  Flame,
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -43,6 +45,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCloseMobile }) => {
     {
       heading: 'Observability & Trust',
       items: [
+        { label: 'Reliability & Topology', to: '/reliability', icon: Network },
+        { label: 'Chaos Laboratory', to: '/chaos', icon: Flame },
         { label: 'Usage Analytics', to: '/analytics', icon: BarChart3 },
         { label: 'Security & Account', to: '/security', icon: Shield },
       ],
