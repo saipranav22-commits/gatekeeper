@@ -1,0 +1,200 @@
+name: gatekeeper-deploy
+
+services:
+  postgres:
+    image: postgres:16.8-alpine
+    container_name: gatekeeper-deploy-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gatekeeper}
+      POSTGRES_USER: ${POSTGRES_USER:-gatekeeper_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Database password must be set}
+    volumes:
+      - gatekeeper_deploy_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gatekeeper_app} -d ${POSTGRES_DB:-gatekeeper}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          memory: 256M
+    networks:
+      - gatekeeper-deploy-net
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: gatekeeper-deploy-redis
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Redis password must be set}
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 128mb
+      --maxmemory-policy noeviction
+      --dir /data
+    volumes:
+      - gatekeeper_deploy_redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          memory: 128M
+    networks:
+      - gatekeeper-deploy-net
+
+  orders:
+    build:
+      context: ./services/orders-service
+      dockerfile: Dockerfile
+    container_name: gatekeeper-deploy-orders
+    restart: unless-stopped
+    environment:
+      ORDERS_PORT: 8081
+      SPRING_PROFILES_ACTIVE: prod
+      JAVA_OPTS: "-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/orders || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 384M
+        reservations:
+          memory: 192M
+    networks:
+      - gatekeeper-deploy-net
+
+  inventory:
+    build:
+      context: ./services/inventory-service
+      dockerfile: Dockerfile
+    container_name: gatekeeper-deploy-inventory
+    restart: unless-stopped
+    environment:
+      INVENTORY_PORT: 8082
+      SPRING_PROFILES_ACTIVE: prod
+      JAVA_OPTS: "-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/inventory || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 384M
+        reservations:
+          memory: 192M
+    networks:
+      - gatekeeper-deploy-net
+
+  gateway:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: gatekeeper-deploy-gateway
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    environment:
+      SERVER_PORT: 8080
+      SPRING_PROFILES_ACTIVE: prod
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-gatekeeper}
+      DB_USERNAME: ${POSTGRES_USER:-gatekeeper_app}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Database password must be set}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Redis password must be set}
+      GATEKEEPER_JWT_SECRET: ${GATEKEEPER_JWT_SECRET:?JWT secret must be set}
+      GATEKEEPER_JWT_ISSUER: ${GATEKEEPER_JWT_ISSUER:-gatekeeper-auth}
+      GATEKEEPER_JWT_EXPIRATION_SECONDS: ${GATEKEEPER_JWT_EXPIRATION_SECONDS:-900}
+      ORDERS_UPSTREAM_URI: http://orders:8081
+      INVENTORY_UPSTREAM_URI: http://inventory:8082
+      JAVA_OPTS: "-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      orders:
+        condition: service_healthy
+      inventory:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health | grep -q \"UP\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+        reservations:
+          memory: 384M
+    networks:
+      - gatekeeper-deploy-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: gatekeeper-deploy-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+        reservations:
+          memory: 64M
+    networks:
+      - gatekeeper-deploy-net
+
+volumes:
+  gatekeeper_deploy_pgdata:
+    name: gatekeeper_deploy_pgdata
+  gatekeeper_deploy_redisdata:
+    name: gatekeeper_deploy_redisdata
+
+networks:
+  gatekeeper-deploy-net:
+    name: gatekeeper-deploy-network
+    driver: bridge

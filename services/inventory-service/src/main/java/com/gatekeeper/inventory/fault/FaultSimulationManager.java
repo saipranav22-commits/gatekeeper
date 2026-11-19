@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * Strictly disabled in production profile (!prod).
  */
 @Component
-@Profile({"local", "test", "dev", "default"})
+@Profile({"local", "test", "dev"})
 public class FaultSimulationManager {
 
     private static final Logger log = LoggerFactory.getLogger(FaultSimulationManager.class);

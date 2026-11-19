@@ -26,7 +26,7 @@ import java.util.List;
  * </ul>
  */
 @Component
-@Profile({"local", "test", "dev", "default"})
+@Profile({"local", "test", "dev"})
 public class RetryStormScenario extends BaseChaosScenario {
 
     private final String ordersBaseUrl = "http://localhost:8081";

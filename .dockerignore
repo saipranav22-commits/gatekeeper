@@ -1,0 +1,33 @@
+# Git and IDE
+.git
+.gitignore
+.github
+.idea
+.vscode
+*.swp
+*.swo
+
+# Build outputs and dependencies
+**/target/
+**/node_modules/
+**/dist/
+**/.vite/
+**/*.tsbuildinfo
+
+# Logs and dumps
+**/*.log
+**/hs_err_pid*.log
+**/replay_pid*.log
+
+# Local environment and data directories
+**/.env
+**/.env.*
+!**/.env.example
+database-data/
+docker-data/
+
+# Documentation and scratch scripts
+docs/
+*.md
+!README.md
+scratch/

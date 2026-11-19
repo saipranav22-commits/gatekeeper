@@ -1,0 +1,107 @@
+# ==============================================================================
+# Gatekeeper Production Profile (prod)
+# ==============================================================================
+# Hardened production configuration driven strictly by environment variables.
+# No plaintext fallback credentials or default secrets permitted.
+# ==============================================================================
+
+spring:
+  # Production PostgreSQL DataSource
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://${DB_HOST:postgres}:${DB_PORT:5432}/${DB_NAME:gatekeeper}}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: GatekeeperProdHikariCP
+      maximum-pool-size: ${DB_POOL_MAX:10}
+      minimum-idle: ${DB_POOL_MIN_IDLE:2}
+      idle-timeout: 30000
+      connection-timeout: 20000
+      leak-detection-threshold: 60000
+
+  # Production JPA / Hibernate (Schema validated strictly against Flyway)
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+  # Flyway Database Migration
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+  # Production Authenticated Redis
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
+      timeout: ${REDIS_TIMEOUT:2000ms}
+
+logging:
+  level:
+    com.gatekeeper: INFO
+    org.flywaydb: INFO
+    org.hibernate.SQL: WARN
+    org.springframework.security: WARN
+
+# Security and Routing Configuration
+gatekeeper:
+  security:
+    jwt:
+      secret-key: ${GATEKEEPER_JWT_SECRET}
+      issuer: ${GATEKEEPER_JWT_ISSUER:gatekeeper-auth}
+      access-token-expiration-seconds: ${GATEKEEPER_JWT_EXPIRATION_SECONDS:900}
+    login:
+      max-attempts: ${GATEKEEPER_LOGIN_MAX_ATTEMPTS:5}
+      lockout-duration-seconds: ${GATEKEEPER_LOGIN_LOCKOUT_SECONDS:900}
+      fail-closed-on-outage: true
+
+  # Resilient Gateway Routing with SSRF-safe container upstream targets
+  routing:
+    enabled: true
+    default-timeout-ms: 5000
+    allowed-hosts:
+      - localhost
+      - 127.0.0.1
+      - "::1"
+      - orders
+      - inventory
+      - ${ORDERS_HOST:orders}
+      - ${INVENTORY_HOST:inventory}
+    routes:
+      - route-id: orders-service-v1
+        path-pattern: "/api/v1/proxy/orders/**"
+        path-prefix: "/api/v1/proxy"
+        upstream-service-id: orders-service
+        upstream-base-uri: ${ORDERS_UPSTREAM_URI:http://orders:8081}
+        allowed-methods:
+          - GET
+          - POST
+        method-scopes:
+          GET: orders:read
+          POST: orders:write
+        default-scope: orders:read
+        enabled: true
+        timeout-ms: 5000
+        max-body-size-bytes: 1048576
+      - route-id: inventory-service-v1
+        path-pattern: "/api/v1/proxy/inventory/**"
+        path-prefix: "/api/v1/proxy"
+        upstream-service-id: inventory-service
+        upstream-base-uri: ${INVENTORY_UPSTREAM_URI:http://inventory:8082}
+        allowed-methods:
+          - GET
+        method-scopes:
+          GET: inventory:read
+        default-scope: inventory:read
+        enabled: true
+        timeout-ms: 5000
+        max-body-size-bytes: 1048576

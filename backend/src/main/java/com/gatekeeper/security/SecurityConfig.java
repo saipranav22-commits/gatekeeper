@@ -6,6 +6,7 @@ import com.gatekeeper.gateway.filter.GatewayUsageTrackingFilter;
 import com.gatekeeper.security.filter.GatekeeperAccessDeniedHandler;
 import com.gatekeeper.security.filter.GatekeeperAuthenticationEntryPoint;
 import com.gatekeeper.security.filter.JwtAuthenticationFilter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -135,13 +136,16 @@ public class SecurityConfig {
         return http.build();
     }
 
+    @Value("${gatekeeper.security.cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000}")
+    private List<String> allowedOrigins;
+
     /**
-     * CORS configuration explicitly permitting local frontend development origins.
+     * CORS configuration explicitly permitting configured frontend development and deployment origins.
      */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("http://localhost:5173", "http://127.0.0.1:5173"));
+        configuration.setAllowedOrigins(allowedOrigins);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin", "X-API-Key"));
         configuration.setExposedHeaders(List.of("Authorization", "Location", "Retry-After", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"));

@@ -34,7 +34,7 @@ import java.util.UUID;
  * </ul>
  */
 @Component
-@Profile({"local", "test", "dev", "default"})
+@Profile({"local", "test", "dev"})
 public class PolicySafetyScenario extends BaseChaosScenario {
 
     private final PolicyAdministrationService policyAdminService;

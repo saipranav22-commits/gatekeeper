@@ -30,7 +30,7 @@ import java.util.List;
  * </ul>
  */
 @Component
-@Profile({"local", "test", "dev", "default"})
+@Profile({"local", "test", "dev"})
 public class ChaosReportGenerator {
 
     private static final Logger log = LoggerFactory.getLogger(ChaosReportGenerator.class);

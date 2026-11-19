@@ -32,7 +32,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/api/v1/chaos")
-@Profile({"local", "test", "dev", "default"})
+@Profile({"local", "test", "dev"})
 @Tag(name = "Chaos Engineering", description = "Controlled reliability experiments & failure injection lab")
 public class ChaosAdminController {
 

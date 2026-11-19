@@ -13,7 +13,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/fault")
-@Profile({"local", "test", "dev", "default"})
+@Profile({"local", "test", "dev"})
 public class FaultInjectionController {
 
     private final FaultSimulationManager faultManager;

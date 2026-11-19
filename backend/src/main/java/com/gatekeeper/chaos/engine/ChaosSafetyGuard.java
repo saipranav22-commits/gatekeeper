@@ -29,7 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * </ul>
  */
 @Component
-@Profile({"local", "test", "dev", "default"})
+@Profile({"local", "test", "dev"})
 public class ChaosSafetyGuard {
 
     private static final Logger log = LoggerFactory.getLogger(ChaosSafetyGuard.class);
@@ -71,14 +71,12 @@ public class ChaosSafetyGuard {
             throw new SecurityException("CRITICAL SAFETY VIOLATION: Chaos experiments are strictly forbidden in production profile!");
         }
 
-        boolean hasPermittedProfile = activeProfiles.isEmpty()
-            || activeProfiles.contains("local")
+        boolean hasPermittedProfile = activeProfiles.contains("local")
             || activeProfiles.contains("test")
-            || activeProfiles.contains("dev")
-            || activeProfiles.contains("default");
+            || activeProfiles.contains("dev");
 
         if (!hasPermittedProfile) {
-            throw new SecurityException("Chaos experiments can only run in local, test, or dev profiles. Active: " + activeProfiles);
+            throw new SecurityException("Chaos experiments can only run in explicit local, test, or dev profiles. Active: " + activeProfiles);
         }
     }
 

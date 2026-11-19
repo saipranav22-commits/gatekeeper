@@ -33,7 +33,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * </pre>
  */
 @Service
-@Profile({"local", "test", "dev", "default"})
+@Profile({"local", "test", "dev"})
 public class ChaosExperimentEngine {
 
     private static final Logger log = LoggerFactory.getLogger(ChaosExperimentEngine.class);

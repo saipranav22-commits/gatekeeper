@@ -30,7 +30,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Proves that Chaos Engineering REST controllers and execution capabilities
  * are strictly disabled and completely inaccessible in production environments.
  */
-@SpringBootTest
+@SpringBootTest(properties = {
+    "gatekeeper.security.jwt.secret-key=prod-security-test-jwt-secret-key-32bytes-entropy!"
+})
 @AutoConfigureMockMvc
 @ActiveProfiles({"foundation", "prod"})
 class ChaosProductionSecurityTest {

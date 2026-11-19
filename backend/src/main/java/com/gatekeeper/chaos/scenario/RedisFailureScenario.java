@@ -31,7 +31,7 @@ import java.util.UUID;
  * </ul>
  */
 @Component
-@Profile({"local", "test", "dev", "default"})
+@Profile({"local", "test", "dev"})
 public class RedisFailureScenario extends BaseChaosScenario {
 
     private final TokenBucketRateLimiter rateLimiter;

@@ -28,6 +28,15 @@ class ChaosSafetyGuardTest {
     }
 
     @Test
+    @DisplayName("Safety: Default or empty profile strictly throws SecurityException")
+    void rejectsDefaultProfileWithoutExplicitLocalOrTest() {
+        MockEnvironment env = new MockEnvironment(); // default / empty
+        ChaosSafetyGuard guard = new ChaosSafetyGuard(env);
+
+        assertThrows(SecurityException.class, guard::validateEnvironment);
+    }
+
+    @Test
     @DisplayName("Safety: Local, test, and dev profiles are permitted")
     void permitsNonProductionProfiles() {
         MockEnvironment env = new MockEnvironment();
@@ -40,7 +49,9 @@ class ChaosSafetyGuardTest {
     @Test
     @DisplayName("Safety: Rejects unauthorized remote hosts and ports")
     void rejectsUnauthorizedTargets() {
-        ChaosSafetyGuard guard = new ChaosSafetyGuard(new MockEnvironment());
+        MockEnvironment env = new MockEnvironment();
+        env.setActiveProfiles("test");
+        ChaosSafetyGuard guard = new ChaosSafetyGuard(env);
 
         assertThrows(SecurityException.class, () -> guard.validateTargetUri("http://evil-external-host.com:8080"));
         assertThrows(SecurityException.class, () -> guard.validateTargetUri("http://192.168.1.100:8080"));
@@ -50,7 +61,9 @@ class ChaosSafetyGuardTest {
     @Test
     @DisplayName("Safety: Allows authorized loopback target URIs")
     void allowsAuthorizedLoopbackTargets() {
-        ChaosSafetyGuard guard = new ChaosSafetyGuard(new MockEnvironment());
+        MockEnvironment env = new MockEnvironment();
+        env.setActiveProfiles("test");
+        ChaosSafetyGuard guard = new ChaosSafetyGuard(env);
 
         assertDoesNotThrow(() -> guard.validateTargetUri("http://localhost:8081"));
         assertDoesNotThrow(() -> guard.validateTargetUri("http://127.0.0.1:8082"));
@@ -60,7 +73,9 @@ class ChaosSafetyGuardTest {
     @Test
     @DisplayName("Safety: Enforces hard limits on concurrency, duration, and request volume")
     void enforcesParameterBoundaries() {
-        ChaosSafetyGuard guard = new ChaosSafetyGuard(new MockEnvironment());
+        MockEnvironment env = new MockEnvironment();
+        env.setActiveProfiles("test");
+        ChaosSafetyGuard guard = new ChaosSafetyGuard(env);
 
         ChaosExperiment excessiveVolume = new ChaosExperiment(
             "exp-1", ChaosScenarioType.ORDERS_OUTAGE, ChaosTarget.ORDERS_SERVICE, FaultType.HTTP_ERROR,
@@ -78,7 +93,9 @@ class ChaosSafetyGuardTest {
     @Test
     @DisplayName("Safety: Prevents multiple concurrent disruptive experiments on the same target")
     void preventsConcurrentDisruptiveExperimentsOnSameTarget() {
-        ChaosSafetyGuard guard = new ChaosSafetyGuard(new MockEnvironment());
+        MockEnvironment env = new MockEnvironment();
+        env.setActiveProfiles("test");
+        ChaosSafetyGuard guard = new ChaosSafetyGuard(env);
 
         ChaosExperiment exp1 = new ChaosExperiment("exp-1", ChaosScenarioType.ORDERS_OUTAGE, ChaosTarget.ORDERS_SERVICE, FaultType.HTTP_ERROR, Map.of());
         ChaosExperiment exp2 = new ChaosExperiment("exp-2", ChaosScenarioType.SLOW_UPSTREAM, ChaosTarget.ORDERS_SERVICE, FaultType.LATENCY_INJECTION, Map.of());

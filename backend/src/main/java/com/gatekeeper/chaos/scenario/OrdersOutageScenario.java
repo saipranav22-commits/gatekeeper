@@ -25,7 +25,7 @@ import java.util.List;
  * </ul>
  */
 @Component
-@Profile({"local", "test", "dev", "default"})
+@Profile({"local", "test", "dev"})
 public class OrdersOutageScenario extends BaseChaosScenario {
 
     private final String gatewayBaseUrl = "http://localhost:8080";
