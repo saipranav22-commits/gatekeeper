@@ -84,21 +84,31 @@ sed -i "s|^GATEKEEPER_JWT_SECRET=.*|GATEKEEPER_JWT_SECRET=${JWT_SECRET}|" .env
 When the system boots for the first time, the `admin_users` table is empty.
 
 ### Safe Bootstrap Procedure:
-1. Launch the stack:
+1. Ensure the database and redis dependencies are running:
    ```bash
-   docker compose -f docker-compose.deploy.yml up -d
+   docker compose -f docker-compose.deploy.yml up -d postgres redis
    ```
-2. Await healthy status:
+2. Verify dependency health:
    ```bash
    docker compose -f docker-compose.deploy.yml ps
    ```
-3. Execute one-off administrator bootstrap inside the running gateway container:
+3. Execute one-off administrator bootstrap using Spring Boot's application runner flag (`--gatekeeper.bootstrap.enabled=true`):
    ```bash
-   # Generates admin credentials securely without shell history retention
-   docker compose -f docker-compose.deploy.yml exec -it gateway sh -c \
-     'exec java -cp /app/app.jar com.gatekeeper.security.service.AdminBootstrapRunner'
+   # Interactive console (prompts securely for username, email, and masked password):
+   docker compose -f docker-compose.deploy.yml run --rm -it gateway --gatekeeper.bootstrap.enabled=true
    ```
-4. Enter the administrator username, email, and password interactively into standard input.
+   *Alternative (Non-interactive / CI / Automation using environment variables)*:
+   ```bash
+   docker compose -f docker-compose.deploy.yml run --rm \
+     -e BOOTSTRAP_ADMIN_USERNAME="admin" \
+     -e BOOTSTRAP_ADMIN_EMAIL="admin@gatekeeper.local" \
+     -e BOOTSTRAP_ADMIN_PASSWORD="YourStrongPassword123!" \
+     gateway --gatekeeper.bootstrap.enabled=true
+   ```
+4. Start the remaining stack services (orders, inventory, gateway, frontend):
+   ```bash
+   docker compose -f docker-compose.deploy.yml up -d
+   ```
 5. Verify login token generation over HTTPS:
    ```bash
    curl -s -X POST https://gatekeeper.<PUBLIC-IP>.sslip.io/api/v1/auth/login \

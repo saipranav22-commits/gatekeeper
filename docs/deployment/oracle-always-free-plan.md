@@ -10,11 +10,18 @@ This architecture establishes a **₹0 / $0 recurring hosting cost** production 
 
 | Resource Dimension | Always Free Allowance | Gatekeeper Proposed Allocation | Safety Buffer / Remaining Headroom |
 |---|---|---|---|
-| **Ampere A1 Compute** | 4 OCPUs & 24 GB RAM (3,000 OCPU-hrs / 18,000 GB-hrs/mo) | **2 OCPUs & 12 GB RAM** | 2 OCPUs & 12 GB RAM (50% headroom retained) |
+| **Ampere A1 Compute** | 3,000 OCPU-hrs & 18,000 GB-hrs/mo (Up to 4 OCPUs / 24 GB RAM) | **2 OCPUs & 12 GB RAM** (~1,488 OCPU-hrs / ~8,928 GB-hrs/mo) | 2 OCPUs & 12 GB RAM (~1,512 OCPU-hrs / ~9,072 GB-hrs headroom) |
 | **Block Volume Storage** | 200 GB total (Boot + Block Volumes) | **50 GB Boot Volume** | 150 GB storage available |
 | **Outbound Data Transfer** | 10 TB / month free | < 50 GB / month (Estimated) | > 9,950 GB / month bandwidth remaining |
 | **Public IPv4 Address** | 1 free ephemeral or reserved IPv4 | **1 Dedicated Public IPv4** | Included at ₹0 |
 | **Cloud Firewalls** | Unlimited VCN Security Lists / NSGs | Port 22 (SSH), 80 (HTTP), 443 (HTTPS) | All internal ports blocked |
+
+> [!NOTE]
+> **Always Free Entitlement Math**:
+> In a 31-day month (744 hours), running a 2 OCPU / 12 GB RAM VM continuously consumes:
+> - `2 OCPU * 744 hours = 1,488 OCPU-hours` (well under the 1,500 OCPU-hrs half-allocation threshold and the 3,000 OCPU-hrs tenancy maximum).
+> - `12 GB RAM * 744 hours = 8,928 GB-hours` (well under the 9,000 GB-hrs half-allocation threshold and the 18,000 GB-hrs tenancy maximum).
+> This 2 OCPU / 12 GB sizing guarantees that even if a region or tenancy policy calculates quotas against conservative baseline limits, Gatekeeper will never exceed quotas or incur unexpected charges.
 
 ---
 
