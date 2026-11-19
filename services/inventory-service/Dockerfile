@@ -39,9 +39,9 @@ ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0 -XX:+Exit
 
 EXPOSE 8082
 
-# Healthcheck checking microservice endpoint
+# Healthcheck checking microservice dedicated health endpoint
 HEALTHCHECK --interval=20s --timeout=5s --start-period=25s --retries=3 \
-  CMD wget -qO- http://localhost:${INVENTORY_PORT}/inventory || exit 1
+  CMD wget -qO- http://localhost:${INVENTORY_PORT}/health | grep -q "UP" || exit 1
 
 # Execute as non-root user
 USER appuser:appgroup

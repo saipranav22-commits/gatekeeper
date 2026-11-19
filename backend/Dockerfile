@@ -39,9 +39,9 @@ ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -XX:InitialRAMPercentage=50.0 -XX:+Exit
 
 EXPOSE 8080
 
-# Healthcheck leveraging Spring Boot Actuator endpoint
+# Healthcheck leveraging dedicated public health endpoint
 HEALTHCHECK --interval=20s --timeout=5s --start-period=30s --retries=3 \
-  CMD wget -qO- http://localhost:${SERVER_PORT}/actuator/health | grep -q "UP" || exit 1
+  CMD wget -qO- http://localhost:${SERVER_PORT}/api/v1/health | grep -q "UP" || exit 1
 
 # Execute as non-root user
 USER appuser:appgroup

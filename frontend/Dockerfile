@@ -32,6 +32,12 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # Copy production Nginx reverse proxy configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
+# Hardened permissions on web root and nginx operational directories
+RUN chown -R nginx:nginx /usr/share/nginx/html && \
+    chmod -R 755 /usr/share/nginx/html && \
+    chown -R nginx:nginx /var/cache/nginx && \
+    chown -R nginx:nginx /var/log/nginx
+
 EXPOSE 80
 
 # Healthcheck validating Nginx is serving content

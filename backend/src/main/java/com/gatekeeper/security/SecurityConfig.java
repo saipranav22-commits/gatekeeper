@@ -126,7 +126,7 @@ public class SecurityConfig {
                 .accessDeniedHandler(accessDeniedHandler)
             )
             .authorizeHttpRequests(authorize -> authorize
-                .requestMatchers("/api/v1/health").permitAll()
+                .requestMatchers("/api/v1/health", "/actuator/health").permitAll()
                 .requestMatchers("/api/v1/auth/login").permitAll()
                 .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                 .anyRequest().authenticated()
