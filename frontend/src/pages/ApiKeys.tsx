@@ -8,7 +8,6 @@ import { useToast } from '@/context/ToastContext'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -20,8 +19,8 @@ import {
   Plus,
   RefreshCw,
   Search,
-  AlertTriangle,
   ShieldAlert,
+  Trash2,
 } from 'lucide-react'
 
 const AVAILABLE_SCOPES = [
@@ -168,10 +167,15 @@ export const ApiKeys: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-moss/40">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">API Key Management</h1>
-          <p className="text-xs text-slate-500 mt-1">
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold tracking-tight text-silver-frost">API Key Management</h1>
+            <Badge variant="slate" className="border-moss text-titanium text-[10px]">
+              Ingress Security
+            </Badge>
+          </div>
+          <p className="text-xs text-titanium mt-1">
             Generate and audit cryptographic credentials authorizing gateway ingress traffic
           </p>
         </div>
@@ -181,9 +185,9 @@ export const ApiKeys: React.FC = () => {
             size="sm"
             onClick={() => refetch()}
             disabled={isFetching}
-            className="text-xs"
+            className="text-xs border-moss/60 text-titanium hover:text-silver-frost bg-surface"
           >
-            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isFetching ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isFetching ? 'animate-spin text-emerald' : ''}`} />
             Refresh
           </Button>
           {canMutate() && (
@@ -191,10 +195,10 @@ export const ApiKeys: React.FC = () => {
               variant="primary"
               size="sm"
               onClick={() => {
-                setCreateConsumerId(selectedConsumerId || (consumers[0]?.id || ''))
+                setCreateConsumerId(selectedConsumerId || consumers[0]?.id || '')
                 setIsCreateModalOpen(true)
               }}
-              className="text-xs shadow-sm bg-indigo-600 hover:bg-indigo-500"
+              className="text-xs"
             >
               <Plus className="w-3.5 h-3.5 mr-1" />
               Provision API Key
@@ -204,13 +208,13 @@ export const ApiKeys: React.FC = () => {
       </div>
 
       {/* Selector & Search Toolbar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-surface p-3.5 rounded-xl border border-moss/40 shadow-sm">
         <div className="flex items-center gap-2 w-full sm:w-80">
-          <label className="text-xs font-semibold text-slate-600 shrink-0">Consumer:</label>
+          <label className="text-xs font-semibold text-titanium shrink-0">Consumer:</label>
           <select
             value={activeConsumerId}
             onChange={(e) => setSelectedConsumerId(e.target.value)}
-            className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            className="w-full px-2.5 py-1.5 text-xs bg-surface-elevated border border-moss/40 rounded-lg text-silver-frost font-medium focus:outline-none focus:border-emerald"
           >
             {consumers.map((c) => (
               <option key={c.id} value={c.id}>
@@ -221,28 +225,28 @@ export const ApiKeys: React.FC = () => {
         </div>
 
         <div className="relative w-full sm:w-72">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+          <Search className="w-4 h-4 text-titanium-muted absolute left-3 top-2.5 pointer-events-none" />
           <input
             type="text"
             placeholder="Search key prefix or scope..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-colors"
+            className="w-full pl-9 pr-3.5 py-1.5 text-xs bg-surface-elevated border border-moss/40 rounded-lg text-silver-frost placeholder:text-titanium-muted focus:outline-none focus:border-emerald transition-colors"
           />
         </div>
       </div>
 
       {/* Consumer Quick Info Bar */}
       {currentConsumer && (
-        <div className="flex items-center justify-between p-3.5 bg-indigo-50/50 border border-indigo-100 rounded-xl text-xs">
+        <div className="flex items-center justify-between p-3.5 bg-surface border border-moss/40 rounded-xl text-xs">
           <div className="flex items-center gap-3">
-            <span className="font-semibold text-slate-900">{currentConsumer.name}</span>
+            <span className="font-semibold text-silver-frost">{currentConsumer.name}</span>
             <Badge variant="purple">{currentConsumer.plan?.name}</Badge>
-            <span className="text-slate-500 font-mono hidden sm:inline">{currentConsumer.email}</span>
+            <span className="text-titanium font-mono hidden sm:inline">{currentConsumer.email}</span>
           </div>
           <Link
             to={`/consumers/${currentConsumer.id}`}
-            className="text-indigo-600 font-medium hover:text-indigo-800 flex items-center gap-1"
+            className="text-emerald font-medium hover:text-emerald/80 flex items-center gap-1"
           >
             Manage Consumer &rarr;
           </Link>
@@ -250,7 +254,7 @@ export const ApiKeys: React.FC = () => {
       )}
 
       {/* Keys Table Card */}
-      <Card>
+      <Card className="bg-surface border border-moss/40 overflow-hidden">
         <CardContent className="p-0">
           {keysLoading || consumersLoading ? (
             <div className="p-6 space-y-4">
@@ -259,82 +263,80 @@ export const ApiKeys: React.FC = () => {
               <Skeleton className="h-8 w-full" />
             </div>
           ) : keysError ? (
-            <div className="p-12 text-center text-slate-400">
-              <ShieldAlert className="w-8 h-8 text-rose-500 mx-auto mb-2" />
-              <p className="text-sm font-semibold text-slate-800">Failed to load API keys</p>
+            <div className="p-12 text-center text-titanium-muted">
+              <ShieldAlert className="w-8 h-8 text-crimson mx-auto mb-2" />
+              <p className="text-sm font-semibold text-silver-frost">Failed to load API keys</p>
+              <p className="text-xs text-titanium mt-1">Check network connectivity and permissions.</p>
             </div>
           ) : filteredKeys.length === 0 ? (
-            <div className="p-12 text-center text-slate-400">
-              <KeyRound className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-              <p className="text-sm font-semibold text-slate-800">No API keys found</p>
-              <p className="text-xs text-slate-500 mt-1">
+            <div className="p-12 text-center text-titanium-muted">
+              <KeyRound className="w-10 h-10 text-titanium-muted/40 mx-auto mb-2" />
+              <p className="text-sm font-semibold text-silver-frost">No API keys found</p>
+              <p className="text-xs text-titanium mt-1">
                 {searchQuery ? 'No keys match the search criteria.' : 'Generate a key for this consumer.'}
               </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-700">
-                <thead className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-surface-elevated/70 border-b border-moss/30 text-titanium uppercase tracking-wider font-medium text-[11px]">
                   <tr>
-                    <th className="px-6 py-3.5">Key Label</th>
-                    <th className="px-6 py-3.5">Key Prefix</th>
-                    <th className="px-6 py-3.5">Status</th>
-                    <th className="px-6 py-3.5">Scopes</th>
-                    <th className="px-6 py-3.5">Last Used</th>
-                    <th className="px-6 py-3.5">Expires</th>
-                    <th className="px-6 py-3.5 text-right">Actions</th>
+                    <th className="px-5 py-3">Key Label</th>
+                    <th className="px-5 py-3">Key Prefix</th>
+                    <th className="px-5 py-3">Status</th>
+                    <th className="px-5 py-3">Scopes</th>
+                    <th className="px-5 py-3">Created</th>
+                    <th className="px-5 py-3">Expires</th>
+                    <th className="px-5 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
+                <tbody className="divide-y divide-moss/20 text-silver-frost">
                   {filteredKeys.map((k) => (
-                    <tr key={k.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="px-6 py-4 font-semibold text-slate-900">{k.name}</td>
-                      <td className="px-6 py-4 font-mono text-xs text-slate-600">{k.keyPrefix}</td>
-                      <td className="px-6 py-4">
+                    <tr key={k.id} className="hover:bg-surface-elevated/40 transition-colors">
+                      <td className="px-5 py-3.5 font-semibold text-silver-frost">{k.name}</td>
+                      <td className="px-5 py-3.5 font-mono text-[11px] text-emerald">{k.keyPrefix}</td>
+                      <td className="px-5 py-3.5">
                         {k.status === 'ACTIVE' && <Badge variant="success">Active</Badge>}
                         {k.status === 'REVOKED' && <Badge variant="danger">Revoked</Badge>}
                         {k.status === 'EXPIRED' && <Badge variant="warning">Expired</Badge>}
                         {k.status === 'DEACTIVATED' && <Badge variant="slate">Deactivated</Badge>}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-5 py-3.5">
                         <div className="flex flex-wrap gap-1">
                           {k.scopes.map((s) => (
                             <span
                               key={s}
-                              className="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded text-[11px] font-mono border border-slate-200"
+                              className="px-1.5 py-0.5 text-[10px] font-mono bg-surface-elevated text-silver-frost rounded border border-moss/30"
                             >
                               {s}
                             </span>
                           ))}
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-xs text-slate-500">
-                        {k.lastUsedAt ? (
-                          <span className="text-slate-900 font-medium">{formatDate(k.lastUsedAt)}</span>
-                        ) : (
-                          <span className="text-slate-400 italic">Never used</span>
-                        )}
+                      <td className="px-5 py-3.5 text-titanium font-mono text-[11px]">{formatDate(k.createdAt)}</td>
+                      <td className="px-5 py-3.5 text-titanium font-mono text-[11px]">
+                        {k.expiresAt ? formatDate(k.expiresAt) : 'Never'}
                       </td>
-                      <td className="px-6 py-4 text-xs text-slate-500">
-                        {k.expiresAt ? formatDate(k.expiresAt) : <span className="text-slate-400">Never</span>}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        {canMutate() && k.status === 'ACTIVE' ? (
+                      <td className="px-5 py-3.5 text-right">
+                        {k.status === 'ACTIVE' && canMutate() ? (
                           <Button
-                            variant="outline"
+                            variant="danger"
                             size="sm"
-                            onClick={() =>
-                              setRevokeTarget({
-                                consumerId: activeConsumerId,
-                                key: k,
-                              })
-                            }
-                            className="text-xs text-rose-600 hover:bg-rose-50 border-rose-200"
+                            onClick={() => setRevokeTarget({ consumerId: activeConsumerId, key: k })}
+                            className="text-[11px] py-1 px-2"
                           >
+                            <Trash2 className="w-3 h-3 mr-1" />
                             Revoke
                           </Button>
+                        ) : k.revocationReason ? (
+                          <span
+                            className="text-[11px] text-titanium-muted italic"
+                            title={`Reason: ${k.revocationReason}`}
+                          >
+                            {k.revocationReason}
+                          </span>
                         ) : (
-                          <span className="text-xs text-slate-400">—</span>
+                          <span className="text-[11px] text-titanium-muted italic">Inactive</span>
                         )}
                       </td>
                     </tr>
@@ -346,133 +348,152 @@ export const ApiKeys: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Modal: Provision API Key */}
+      {/* 1. Modal: Provision API Key */}
       <Modal
         isOpen={isCreateOpen}
         onClose={handleCloseCreate}
-        title="Provision Consumer API Key"
-        description="Generates an authentication key. Plaintext credential is displayed exactly once."
+        title="Provision Cryptographic API Key"
+        description="Generates a high-entropy key credential. The plaintext key will be shown ONCE upon generation."
       >
         <form onSubmit={handleCreateSubmit} className="space-y-4">
-          <Select
-            label="Target Consumer"
-            value={createConsumerId}
-            onChange={(e) => setCreateConsumerId(e.target.value)}
-            required
-          >
-            {consumers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name} ({c.email})
-              </option>
-            ))}
-          </Select>
+          <div>
+            <label className="block text-xs font-semibold text-titanium mb-1">Target Consumer Organization</label>
+            <select
+              value={createConsumerId}
+              onChange={(e) => setCreateConsumerId(e.target.value)}
+              className="w-full px-3 py-2 text-xs bg-surface-elevated border border-moss/60 rounded-lg text-silver-frost focus:outline-none focus:border-emerald"
+              required
+            >
+              <option value="">Select a consumer...</option>
+              {consumers.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.email})
+                </option>
+              ))}
+            </select>
+          </div>
 
           <Input
-            label="API Key Label"
-            placeholder="e.g. Backend Automation Worker"
+            label="Key Identifier / Label"
+            placeholder="e.g. Production Ingress Key (Live)"
             value={keyLabel}
             onChange={(e) => setKeyLabel(e.target.value)}
             required
           />
 
-          <div className="space-y-1.5 text-left">
-            <label className="text-xs font-semibold uppercase tracking-wider text-slate-700">
-              Authorized Scopes
-            </label>
-            <div className="space-y-2 border border-slate-200 rounded-lg p-3 bg-slate-50">
-              {AVAILABLE_SCOPES.map((sc) => (
-                <label key={sc.id} className="flex items-start gap-2.5 text-xs text-slate-800 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedScopes.includes(sc.id)}
-                    onChange={() => toggleScope(sc.id)}
-                    className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                  />
-                  <div>
-                    <span className="font-mono font-semibold">{sc.label}</span>
-                    <p className="text-[11px] text-slate-500">{sc.desc}</p>
-                  </div>
-                </label>
-              ))}
+          <div>
+            <label className="block text-xs font-semibold text-titanium mb-2">Authorized Scopes</label>
+            <div className="space-y-2">
+              {AVAILABLE_SCOPES.map((sc) => {
+                const isChecked = selectedScopes.includes(sc.id)
+                return (
+                  <label
+                    key={sc.id}
+                    className={`flex items-start gap-2.5 p-2 rounded-lg border cursor-pointer transition-colors ${
+                      isChecked
+                        ? 'border-emerald/40 bg-emerald/5 text-silver-frost'
+                        : 'border-moss/30 hover:border-moss text-titanium'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => toggleScope(sc.id)}
+                      className="mt-0.5 rounded border-moss text-emerald focus:ring-emerald"
+                    />
+                    <div>
+                      <div className="font-mono text-xs font-medium">{sc.label}</div>
+                      <div className="text-[11px] text-titanium-muted">{sc.desc}</div>
+                    </div>
+                  </label>
+                )
+              })}
             </div>
           </div>
 
           <Input
-            label="Expiration Timestamp (Optional UTC)"
+            label="Expiration Date (Optional)"
             type="datetime-local"
             value={expiresAtInput}
             onChange={(e) => setExpiresAtInput(e.target.value)}
-            helperText="Leave blank for a non-expiring key"
           />
 
-          <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
-            <Button variant="ghost" type="button" onClick={handleCloseCreate}>
+          <div className="flex justify-end gap-2 pt-3 border-t border-moss/30">
+            <Button variant="outline" type="button" onClick={handleCloseCreate}>
               Cancel
             </Button>
-            <Button variant="primary" type="submit" isLoading={createKeyMutation.isPending}>
-              Generate Key
+            <Button variant="primary" type="submit" disabled={createKeyMutation.isPending}>
+              {createKeyMutation.isPending ? 'Generating Key...' : 'Generate API Key'}
             </Button>
           </div>
         </form>
       </Modal>
 
-      {/* ONE-TIME SECRET MODAL */}
-      <OneTimeSecretModal
-        isOpen={secretModalOpen}
-        onClose={() => {
-          setCreatedKeyPlaintext(null)
-          setSecretModalOpen(false)
-        }}
-        keyName={createdKeyName}
-        keyPrefix={createdKeyPrefix}
-        plaintextKey={createdKeyPlaintext}
-      />
+      {/* 2. Modal: Revoke API Key */}
+      {revokeTarget && (
+        <Modal
+          isOpen={!!revokeTarget}
+          onClose={() => setRevokeTarget(null)}
+          title="Revoke API Key"
+          description="Permanently invalidate this cryptographic key. Downstream calls will be immediately rejected."
+        >
+          <div className="space-y-4">
+            <div className="p-3 bg-crimson/10 border border-crimson/30 rounded-lg text-xs text-crimson leading-relaxed">
+              <strong>Warning:</strong> Key <strong>{revokeTarget.key.name}</strong> (
+              <span className="font-mono">{revokeTarget.key.keyPrefix}</span>) will be permanently revoked. This
+              action is irreversible and halts all incoming traffic authenticated with this secret.
+            </div>
 
-      {/* Modal: Revoke API Key */}
-      <Modal
-        isOpen={!!revokeTarget}
-        onClose={() => setRevokeTarget(null)}
-        title="Revoke API Key"
-        description="Permanently revoke cryptographic credential"
-      >
-        <div className="space-y-4">
-          <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-900 text-xs flex items-start gap-2.5">
-            <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-            <div className="leading-relaxed">
-              Are you sure you want to revoke key <strong>{revokeTarget?.key.name}</strong> (prefix:{' '}
-              <code>{revokeTarget?.key.keyPrefix}</code>)? Gateway requests using this key will be rejected with HTTP
-              401.
+            <div>
+              <label className="block text-xs font-semibold text-titanium mb-1">Revocation Audit Reason</label>
+              <textarea
+                value={revocationReason}
+                onChange={(e) => setRevocationReason(e.target.value)}
+                placeholder="Reason for key invalidation (e.g. Credential rotated, Tenant deactivated)..."
+                rows={3}
+                maxLength={255}
+                className="w-full px-3 py-2 text-xs bg-surface-elevated border border-moss/60 rounded-lg text-silver-frost focus:outline-none focus:border-crimson"
+              />
+              <span className="text-[10px] text-titanium-muted">{revocationReason.length} / 255 characters</span>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-moss/30">
+              <Button variant="outline" onClick={() => setRevokeTarget(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() =>
+                  revokeKeyMutation.mutate({
+                    consumerId: revokeTarget.consumerId,
+                    keyId: revokeTarget.key.id,
+                    reason: revocationReason || undefined,
+                  })
+                }
+                disabled={revokeKeyMutation.isPending}
+              >
+                {revokeKeyMutation.isPending ? 'Revoking...' : 'Revoke API Key'}
+              </Button>
             </div>
           </div>
+        </Modal>
+      )}
 
-          <Input
-            label="Revocation Reason (Optional)"
-            placeholder="e.g. Scheduled rotation"
-            value={revocationReason}
-            onChange={(e) => setRevocationReason(e.target.value)}
-          />
-
-          <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setRevokeTarget(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() =>
-                revokeTarget &&
-                revokeKeyMutation.mutate({
-                  consumerId: revokeTarget.consumerId,
-                  keyId: revokeTarget.key.id,
-                  reason: revocationReason,
-                })
-              }
-              isLoading={revokeKeyMutation.isPending}
-            >
-              Confirm Revocation
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      {/* 3. Secure One-Time Secret Reveal Modal */}
+      {createdKeyPlaintext && (
+        <OneTimeSecretModal
+          isOpen={secretModalOpen}
+          onClose={() => {
+            // SECURE WIPE
+            setCreatedKeyPlaintext(null)
+            setSecretModalOpen(false)
+          }}
+          plaintextKey={createdKeyPlaintext}
+          keyName={createdKeyName}
+          keyPrefix={createdKeyPrefix}
+        />
+      )}
     </div>
   )
 }
+export default ApiKeys

@@ -11,6 +11,7 @@ import {
   Shield,
   LogOut,
   ShieldCheck,
+  Sliders,
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -36,6 +37,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCloseMobile }) => {
         { label: 'Consumers', to: '/consumers', icon: Users },
         { label: 'API Keys', to: '/api-keys', icon: KeyRound },
         { label: 'Subscription Plans', to: '/plans', icon: Layers },
+        { label: 'Policy Studio', to: '/policies', icon: Sliders },
       ],
     },
     {

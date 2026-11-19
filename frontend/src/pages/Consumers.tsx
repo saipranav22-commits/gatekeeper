@@ -8,7 +8,6 @@ import { useToast } from '@/context/ToastContext'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { Select } from '@/components/ui/Select'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { Skeleton } from '@/components/ui/Skeleton'
@@ -26,6 +25,7 @@ import {
   Trash2,
   RefreshCw,
   ExternalLink,
+  ArrowUpDown,
 } from 'lucide-react'
 
 export const Consumers: React.FC = () => {
@@ -35,6 +35,8 @@ export const Consumers: React.FC = () => {
 
   const [page, setPage] = useState<number>(0)
   const [pageSize] = useState<number>(20)
+  const [sortBy, setSortBy] = useState<string>('createdAt')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc')
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [statusFilter, setStatusFilter] = useState<string>('ALL')
   const [searchParams, setSearchParams] = useSearchParams()
@@ -62,7 +64,7 @@ export const Consumers: React.FC = () => {
   // Delete confirm modal
   const [deleteTarget, setDeleteTarget] = useState<ConsumerDto | null>(null)
 
-  // 1. Fetch Consumers
+  // 1. Fetch Consumers from real backend
   const {
     data: consumerPage,
     isLoading,
@@ -70,8 +72,8 @@ export const Consumers: React.FC = () => {
     error,
     refetch,
   } = useQuery({
-    queryKey: ['consumers', page, pageSize],
-    queryFn: () => consumerService.listConsumers(page, pageSize, 'createdAt', 'desc'),
+    queryKey: ['consumers', page, pageSize, sortBy, sortDirection],
+    queryFn: () => consumerService.listConsumers(page, pageSize, sortBy, sortDirection),
   })
 
   // 2. Fetch Subscription Plans
@@ -175,13 +177,28 @@ export const Consumers: React.FC = () => {
     })
   }
 
+  const toggleSort = (col: string) => {
+    if (sortBy === col) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(col)
+      setSortDirection('desc')
+    }
+    setPage(0)
+  }
+
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-moss/40">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">API Consumers</h1>
-          <p className="text-xs text-slate-500 mt-1">
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold tracking-tight text-silver-frost">API Consumers</h1>
+            <Badge variant="slate" className="border-moss text-titanium text-[10px]">
+              Directory
+            </Badge>
+          </div>
+          <p className="text-xs text-titanium mt-1">
             Manage authenticated API consumer organizations, rate limits, and lifecycle states
           </p>
         </div>
@@ -191,9 +208,9 @@ export const Consumers: React.FC = () => {
             size="sm"
             onClick={() => refetch()}
             disabled={isFetching}
-            className="text-xs"
+            className="text-xs border-moss/60 text-titanium hover:text-silver-frost bg-surface"
           >
-            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isFetching ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isFetching ? 'animate-spin text-emerald' : ''}`} />
             Refresh
           </Button>
           {canMutate() && (
@@ -206,7 +223,7 @@ export const Consumers: React.FC = () => {
                 }
                 setIsCreateModalOpen(true)
               }}
-              className="text-xs shadow-sm bg-indigo-600 hover:bg-indigo-500"
+              className="text-xs"
             >
               <Plus className="w-3.5 h-3.5 mr-1" />
               Register Consumer
@@ -216,34 +233,60 @@ export const Consumers: React.FC = () => {
       </div>
 
       {/* Filters and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-surface p-3.5 rounded-xl border border-moss/40 shadow-sm">
         <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+          <Search className="w-4 h-4 text-titanium-muted absolute left-3 top-2.5 pointer-events-none" />
           <input
             type="text"
             placeholder="Search by name, email, or UUID..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
+            className="w-full pl-9 pr-3.5 py-1.5 text-xs bg-surface-elevated border border-moss/40 rounded-lg text-silver-frost placeholder:text-titanium-muted focus:outline-none focus:border-emerald transition-colors"
           />
         </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <span className="text-xs text-slate-500 font-medium">Status:</span>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-          >
-            <option value="ALL">All Statuses</option>
-            <option value="ACTIVE">Active</option>
-            <option value="SUSPENDED">Suspended</option>
-            <option value="DEACTIVATED">Deactivated</option>
-          </select>
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="flex items-center gap-1.5 text-xs text-titanium">
+            <span className="font-medium">Status:</span>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-2.5 py-1.5 text-xs bg-surface-elevated border border-moss/40 rounded-lg text-silver-frost focus:outline-none focus:border-emerald"
+            >
+              <option value="ALL">All Statuses</option>
+              <option value="ACTIVE">Active</option>
+              <option value="SUSPENDED">Suspended</option>
+              <option value="DEACTIVATED">Deactivated</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5 text-xs text-titanium">
+            <span className="font-medium">Sort:</span>
+            <select
+              value={sortBy}
+              onChange={(e) => {
+                setSortBy(e.target.value)
+                setPage(0)
+              }}
+              className="px-2.5 py-1.5 text-xs bg-surface-elevated border border-moss/40 rounded-lg text-silver-frost focus:outline-none focus:border-emerald"
+            >
+              <option value="createdAt">Date Created</option>
+              <option value="name">Name</option>
+              <option value="email">Email</option>
+              <option value="status">Status</option>
+            </select>
+            <button
+              onClick={() => setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+              className="p-1.5 border border-moss/40 rounded-lg bg-surface-elevated hover:bg-surface text-titanium hover:text-silver-frost"
+              title="Toggle sort direction"
+            >
+              <ArrowUpDown className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Consumers Table Card */}
-      <Card>
+      <Card className="bg-surface border border-moss/40 overflow-hidden">
         <CardContent className="p-0">
           {isLoading ? (
             <div className="p-6 space-y-4">
@@ -253,57 +296,63 @@ export const Consumers: React.FC = () => {
               <Skeleton className="h-10 w-full" />
             </div>
           ) : error ? (
-            <div className="p-12 text-center text-slate-400">
-              <ShieldAlert className="w-8 h-8 text-rose-500 mx-auto mb-2" />
-              <p className="text-sm font-semibold text-slate-800">Failed to load consumers</p>
-              <p className="text-xs text-slate-500 mt-1">Please ensure backend services are running and authenticated</p>
+            <div className="p-12 text-center text-titanium-muted">
+              <ShieldAlert className="w-8 h-8 text-crimson mx-auto mb-2" />
+              <p className="text-sm font-semibold text-silver-frost">Failed to load consumers</p>
+              <p className="text-xs text-titanium mt-1">Please ensure backend services are running and authenticated</p>
             </div>
           ) : filteredConsumers.length === 0 ? (
-            <div className="p-12 text-center text-slate-400">
-              <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-              <p className="text-sm font-semibold text-slate-800">No consumers found</p>
-              <p className="text-xs text-slate-500 mt-1">
+            <div className="p-12 text-center text-titanium-muted">
+              <Users className="w-10 h-10 text-titanium-muted/40 mx-auto mb-2" />
+              <p className="text-sm font-semibold text-silver-frost">No consumers found</p>
+              <p className="text-xs text-titanium mt-1">
                 {searchQuery ? 'No consumers match your search filter.' : 'Register an API consumer to begin.'}
               </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-700">
-                <thead className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-surface-elevated/70 border-b border-moss/30 text-titanium uppercase tracking-wider font-medium text-[11px]">
                   <tr>
-                    <th className="px-6 py-3.5">Consumer</th>
-                    <th className="px-6 py-3.5">Plan</th>
-                    <th className="px-6 py-3.5">Status</th>
-                    <th className="px-6 py-3.5">Registered</th>
-                    <th className="px-6 py-3.5 text-right">Actions</th>
+                    <th className="px-5 py-3 cursor-pointer hover:text-silver-frost" onClick={() => toggleSort('name')}>
+                      Consumer
+                    </th>
+                    <th className="px-5 py-3">Plan</th>
+                    <th className="px-5 py-3 cursor-pointer hover:text-silver-frost" onClick={() => toggleSort('status')}>
+                      Status
+                    </th>
+                    <th className="px-5 py-3 cursor-pointer hover:text-silver-frost" onClick={() => toggleSort('createdAt')}>
+                      Registered
+                    </th>
+                    <th className="px-5 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
+                <tbody className="divide-y divide-moss/20 text-silver-frost">
                   {filteredConsumers.map((c) => (
-                    <tr key={c.id} className="hover:bg-slate-50/70 transition-colors">
-                      <td className="px-6 py-4">
+                    <tr key={c.id} className="hover:bg-surface-elevated/40 transition-colors">
+                      <td className="px-5 py-3.5">
                         <Link
                           to={`/consumers/${c.id}`}
-                          className="font-semibold text-slate-900 hover:text-indigo-600 transition-colors"
+                          className="font-semibold text-silver-frost hover:text-emerald transition-colors"
                         >
                           {c.name}
                         </Link>
-                        <div className="text-xs text-slate-400 font-mono mt-0.5">{c.email}</div>
+                        <div className="text-[11px] text-titanium font-mono mt-0.5">{c.email}</div>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-5 py-3.5">
                         <Badge variant="purple">{c.plan?.name || 'Unassigned'}</Badge>
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-5 py-3.5">
                         {c.status === 'ACTIVE' && <Badge variant="success">Active</Badge>}
                         {c.status === 'SUSPENDED' && <Badge variant="warning">Suspended</Badge>}
                         {c.status === 'DEACTIVATED' && <Badge variant="slate">Deactivated</Badge>}
                       </td>
-                      <td className="px-6 py-4 text-xs text-slate-500">{formatDate(c.createdAt)}</td>
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-5 py-3.5 text-titanium font-mono text-[11px]">{formatDate(c.createdAt)}</td>
+                      <td className="px-5 py-3.5 text-right">
                         <div className="inline-flex items-center gap-1.5 justify-end">
                           <Link
                             to={`/consumers/${c.id}`}
-                            className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
+                            className="p-1.5 text-titanium hover:text-emerald hover:bg-surface-elevated rounded-md transition-colors"
                             title="View Consumer Details"
                           >
                             <ExternalLink className="w-4 h-4" />
@@ -316,7 +365,7 @@ export const Consumers: React.FC = () => {
                                   setChangePlanConsumer(c)
                                   setSelectedNewPlanId(c.plan?.id || (plans ? plans[0]?.id : ''))
                                 }}
-                                className="px-2 py-1 text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors"
+                                className="px-2 py-1 text-[11px] font-medium text-titanium hover:text-silver-frost bg-surface-elevated hover:bg-surface-elevated/80 border border-moss/30 rounded-md transition-colors"
                               >
                                 Plan
                               </button>
@@ -324,7 +373,7 @@ export const Consumers: React.FC = () => {
                               {c.status === 'ACTIVE' ? (
                                 <button
                                   onClick={() => suspendMutation.mutate(c.id)}
-                                  className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-md transition-colors"
+                                  className="p-1.5 text-amber hover:bg-amber/10 rounded-md transition-colors"
                                   title="Suspend Consumer"
                                 >
                                   <PauseCircle className="w-4 h-4" />
@@ -332,7 +381,7 @@ export const Consumers: React.FC = () => {
                               ) : (
                                 <button
                                   onClick={() => reactivateMutation.mutate(c.id)}
-                                  className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors"
+                                  className="p-1.5 text-emerald hover:bg-emerald/10 rounded-md transition-colors"
                                   title="Reactivate Consumer"
                                 >
                                   <PlayCircle className="w-4 h-4" />
@@ -341,7 +390,7 @@ export const Consumers: React.FC = () => {
 
                               <button
                                 onClick={() => setDeleteTarget(c)}
-                                className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-md transition-colors"
+                                className="p-1.5 text-crimson hover:bg-crimson/10 rounded-md transition-colors"
                                 title="Soft-Delete Consumer"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -357,33 +406,32 @@ export const Consumers: React.FC = () => {
             </div>
           )}
 
-          {/* Pagination Controls */}
+          {/* Pagination Footer */}
           {consumerPage && consumerPage.totalPages > 1 && (
-            <div className="p-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+            <div className="flex items-center justify-between px-5 py-3 border-t border-moss/30 bg-surface-elevated/40 text-xs text-titanium">
               <div>
-                Showing page {consumerPage.number + 1} of {consumerPage.totalPages} ({consumerPage.totalElements} total
-                consumers)
+                Showing page <span className="font-mono text-silver-frost">{page + 1}</span> of{' '}
+                <span className="font-mono text-silver-frost">{consumerPage.totalPages}</span> (
+                <span className="font-mono text-silver-frost">{consumerPage.totalElements}</span> total consumers)
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setPage((p) => Math.max(0, p - 1))}
-                  disabled={consumerPage.first}
-                  className="text-xs py-1 px-2.5"
+                  disabled={page === 0}
+                  className="p-1.5 bg-surface border-moss/40"
                 >
-                  <ChevronLeft className="w-3.5 h-3.5 mr-1" />
-                  Previous
+                  <ChevronLeft className="w-4 h-4" />
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setPage((p) => p + 1)}
+                  onClick={() => setPage((p) => (consumerPage.last ? p : p + 1))}
                   disabled={consumerPage.last}
-                  className="text-xs py-1 px-2.5"
+                  className="p-1.5 bg-surface border-moss/40"
                 >
-                  Next
-                  <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                  <ChevronRight className="w-4 h-4" />
                 </Button>
               </div>
             </div>
@@ -391,126 +439,128 @@ export const Consumers: React.FC = () => {
         </CardContent>
       </Card>
 
-      {/* Modal: Register Consumer */}
+      {/* 1. Modal: Register Consumer */}
       <Modal
         isOpen={isCreateOpen}
         onClose={handleCloseCreate}
         title="Register API Consumer"
-        description="Create a new client entity associated with a subscription rate plan."
+        description="Onboard an organization or external client with an assigned rate-limiting plan."
       >
         <form onSubmit={handleCreateSubmit} className="space-y-4">
           <Input
-            label="Organization or Client Name"
+            label="Consumer Organization Name"
             placeholder="e.g. Acme Corporation"
             value={newConsumerName}
             onChange={(e) => setNewConsumerName(e.target.value)}
             required
           />
           <Input
-            label="Contact Email"
+            label="Primary Contact Email"
             type="email"
-            placeholder="e.g. api@acme.com"
+            placeholder="developer@acme.com"
             value={newConsumerEmail}
             onChange={(e) => setNewConsumerEmail(e.target.value)}
             required
           />
-          <Select
-            label="Initial Subscription Plan"
-            value={newConsumerPlanId}
-            onChange={(e) => setNewConsumerPlanId(e.target.value)}
-            required
-          >
-            {plans?.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} — {p.bucketCapacity} burst tokens ({p.refillTokens} / {p.refillPeriodSeconds}s)
-              </option>
-            ))}
-          </Select>
-
-          <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
-            <Button variant="ghost" type="button" onClick={handleCloseCreate}>
-              Cancel
-            </Button>
-            <Button variant="primary" type="submit" isLoading={createMutation.isPending}>
-              Create Consumer
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Modal: Change Subscription Plan */}
-      <Modal
-        isOpen={!!changePlanConsumer}
-        onClose={() => setChangePlanConsumer(null)}
-        title="Migrate Subscription Plan"
-        description={`Update token bucket rate limits for ${changePlanConsumer?.name}`}
-      >
-        <form onSubmit={handleChangePlanSubmit} className="space-y-4">
-          <div className="p-3 bg-slate-50 rounded-lg text-xs space-y-1 text-slate-600">
-            <div>
-              Current Plan: <strong className="text-slate-900">{changePlanConsumer?.plan?.name || 'None'}</strong>
-            </div>
-            <div>
-              Capacity: {changePlanConsumer?.plan?.bucketCapacity} tokens • Refill:{' '}
-              {changePlanConsumer?.plan?.refillTokens} / {changePlanConsumer?.plan?.refillPeriodSeconds}s
-            </div>
-          </div>
-
-          <Select
-            label="Target Plan"
-            value={selectedNewPlanId}
-            onChange={(e) => setSelectedNewPlanId(e.target.value)}
-            required
-          >
-            {plans?.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} — {p.bucketCapacity} tokens ({p.refillTokens}/{p.refillPeriodSeconds}s)
-              </option>
-            ))}
-          </Select>
-
-          <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
-            <Button variant="ghost" type="button" onClick={() => setChangePlanConsumer(null)}>
-              Cancel
-            </Button>
-            <Button variant="primary" type="submit" isLoading={changePlanMutation.isPending}>
-              Apply Migration
-            </Button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Modal: Soft Delete Confirmation */}
-      <Modal
-        isOpen={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        title="Confirm Soft Deletion"
-        description="Preserve historical audit logs while permanently deauthorizing access."
-      >
-        <div className="space-y-4">
-          <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-lg text-rose-900 text-xs flex items-start gap-2.5">
-            <ShieldAlert className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-            <div className="leading-relaxed">
-              Are you sure you want to soft-delete <strong>{deleteTarget?.name}</strong>? All associated API keys will
-              immediately be invalidated and gateway requests will be rejected with HTTP 401. Historical audit events
-              are preserved.
-            </div>
-          </div>
-
-          <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setDeleteTarget(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
-              isLoading={deleteMutation.isPending}
+          <div>
+            <label className="block text-xs font-semibold text-titanium mb-1">Subscription Plan Tier</label>
+            <select
+              value={newConsumerPlanId}
+              onChange={(e) => setNewConsumerPlanId(e.target.value)}
+              className="w-full px-3 py-2 text-xs bg-surface-elevated border border-moss/60 rounded-lg text-silver-frost focus:outline-none focus:border-emerald"
+              required
             >
-              Confirm Deletion
+              {plans?.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.bucketCapacity} tokens burst)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-moss/30">
+            <Button variant="outline" type="button" onClick={handleCloseCreate}>
+              Cancel
+            </Button>
+            <Button variant="primary" type="submit" disabled={createMutation.isPending}>
+              {createMutation.isPending ? 'Registering...' : 'Register Consumer'}
             </Button>
           </div>
-        </div>
+        </form>
       </Modal>
+
+      {/* 2. Modal: Change Subscription Plan */}
+      {changePlanConsumer && (
+        <Modal
+          isOpen={!!changePlanConsumer}
+          onClose={() => setChangePlanConsumer(null)}
+          title={`Migrate Plan: ${changePlanConsumer.name}`}
+          description="Adjust the assigned rate-limiting bucket. Changes propagate immediately to Gateway Redis clusters."
+        >
+          <form onSubmit={handleChangePlanSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-titanium mb-1">Select Target Plan</label>
+              <select
+                value={selectedNewPlanId}
+                onChange={(e) => setSelectedNewPlanId(e.target.value)}
+                className="w-full px-3 py-2 text-xs bg-surface-elevated border border-moss/60 rounded-lg text-silver-frost focus:outline-none focus:border-emerald"
+                required
+              >
+                {plans?.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.bucketCapacity} burst tokens, {p.refillTokens} / {p.refillPeriodSeconds}s)
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="p-3 bg-surface-elevated border border-amber/30 rounded-lg text-xs text-titanium">
+              <span className="font-semibold text-amber">Operational Impact:</span> Active consumer API keys will
+              immediately inherit the new burst capacity and token refill velocity.
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-moss/30">
+              <Button variant="outline" type="button" onClick={() => setChangePlanConsumer(null)}>
+                Cancel
+              </Button>
+              <Button variant="primary" type="submit" disabled={changePlanMutation.isPending}>
+                {changePlanMutation.isPending ? 'Updating...' : 'Migrate Plan'}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* 3. Modal: Soft Delete Confirmation */}
+      {deleteTarget && (
+        <Modal
+          isOpen={!!deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          title="Confirm Consumer Soft-Deletion"
+          description="Mark this consumer as deleted. All active API keys will be immediately halted."
+        >
+          <div className="space-y-4">
+            <div className="p-3 bg-crimson/10 border border-crimson/30 rounded-lg text-xs text-crimson leading-relaxed">
+              <strong>Warning:</strong> Consumer <strong>{deleteTarget.name}</strong> ({deleteTarget.email}) and its
+              associated keys will be deactivated. Audit telemetry records in PostgreSQL and Redis will be preserved.
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-moss/30">
+              <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => deleteMutation.mutate(deleteTarget.id)}
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? 'Deleting...' : 'Soft-Delete Consumer'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }
+export default Consumers

@@ -11,6 +11,7 @@ import {
   Shield,
   LogOut,
   PlusCircle,
+  Sliders,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -99,6 +100,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
       },
     },
     {
+      id: 'nav-policies',
+      title: 'Policy Studio & Rule Engine',
+      description: 'Versioned ingress rules, dry-run simulations, and historical replay',
+      category: 'Navigation',
+      icon: Sliders,
+      keywords: ['policy', 'rules', 'simulate', 'decision', 'dry run', 'replay', 'governance'],
+      perform: () => {
+        navigate('/policies')
+        onClose()
+      },
+    },
+    {
       id: 'nav-security',
       title: 'Security & Access Control',
       description: 'Admin credentials, active sessions, and gateway security parameters',
@@ -133,6 +146,18 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
             keywords: ['new key', 'create token', 'generate credential'],
             perform: () => {
               navigate('/api-keys?action=create')
+              onClose()
+            },
+          },
+          {
+            id: 'action-policy-studio',
+            title: 'Open Policy Studio',
+            description: 'Inspect active rules and execute dry-run ingress simulations',
+            category: 'Quick Actions' as const,
+            icon: Sliders,
+            keywords: ['simulate rule', 'dry run', 'inspect policy', 'test route'],
+            perform: () => {
+              navigate('/policies')
               onClose()
             },
           },
