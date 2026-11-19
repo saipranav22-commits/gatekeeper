@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { consumerService } from '@/services/consumerService'
 import { planService } from '@/services/planService'
 import { useAuth } from '@/context/AuthContext'
@@ -37,12 +37,23 @@ export const Consumers: React.FC = () => {
   const [pageSize] = useState<number>(20)
   const [searchQuery, setSearchQuery] = useState<string>('')
   const [statusFilter, setStatusFilter] = useState<string>('ALL')
+  const [searchParams, setSearchParams] = useSearchParams()
 
   // Modals state
-  const [isCreateOpen, setIsCreateOpen] = useState<boolean>(false)
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false)
+  const isCreateOpen = isCreateModalOpen || (searchParams.get('action') === 'register' && canMutate())
   const [newConsumerName, setNewConsumerName] = useState<string>('')
   const [newConsumerEmail, setNewConsumerEmail] = useState<string>('')
   const [newConsumerPlanId, setNewConsumerPlanId] = useState<string>('')
+
+  const handleCloseCreate = () => {
+    setIsCreateModalOpen(false)
+    if (searchParams.get('action') === 'register') {
+      const newParams = new URLSearchParams(searchParams)
+      newParams.delete('action')
+      setSearchParams(newParams, { replace: true })
+    }
+  }
 
   // Plan change modal
   const [changePlanConsumer, setChangePlanConsumer] = useState<ConsumerDto | null>(null)
@@ -74,7 +85,7 @@ export const Consumers: React.FC = () => {
     mutationFn: consumerService.createConsumer,
     onSuccess: (newConsumer) => {
       showToast('success', 'Consumer Created', `Consumer '${newConsumer.name}' registered successfully.`)
-      setIsCreateOpen(false)
+      handleCloseCreate()
       setNewConsumerName('')
       setNewConsumerEmail('')
       setNewConsumerPlanId('')
@@ -193,7 +204,7 @@ export const Consumers: React.FC = () => {
                 if (plans && plans.length > 0) {
                   setNewConsumerPlanId(plans[0].id)
                 }
-                setIsCreateOpen(true)
+                setIsCreateModalOpen(true)
               }}
               className="text-xs shadow-sm bg-indigo-600 hover:bg-indigo-500"
             >
@@ -383,7 +394,7 @@ export const Consumers: React.FC = () => {
       {/* Modal: Register Consumer */}
       <Modal
         isOpen={isCreateOpen}
-        onClose={() => setIsCreateOpen(false)}
+        onClose={handleCloseCreate}
         title="Register API Consumer"
         description="Create a new client entity associated with a subscription rate plan."
       >
@@ -417,7 +428,7 @@ export const Consumers: React.FC = () => {
           </Select>
 
           <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
-            <Button variant="ghost" type="button" onClick={() => setIsCreateOpen(false)}>
+            <Button variant="ghost" type="button" onClick={handleCloseCreate}>
               Cancel
             </Button>
             <Button variant="primary" type="submit" isLoading={createMutation.isPending}>

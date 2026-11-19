@@ -1,6 +1,7 @@
 import React from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
+import { useGatewayHealth } from '@/context/GatewayHealthContext'
 import {
   LayoutDashboard,
   Users,
@@ -20,6 +21,7 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ onCloseMobile }) => {
   const { admin, logout } = useAuth()
+  const { status, healthData, lastChecked } = useGatewayHealth()
 
   const navSections = [
     {
@@ -108,13 +110,32 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCloseMobile }) => {
         ))}
       </nav>
 
-      {/* System Status Indicator */}
-      <div className="px-4 py-2 mx-3 mb-3 bg-surface-elevated/50 border border-moss-subtle rounded-lg flex items-center justify-between text-[11px]">
+      {/* Real System Status Indicator */}
+      <div
+        className="px-4 py-2 mx-3 mb-3 bg-surface-elevated/50 border border-moss-subtle rounded-lg flex items-center justify-between text-[11px]"
+        title={lastChecked ? `Status verified: ${lastChecked.toLocaleTimeString()}` : 'Verifying status'}
+      >
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald animate-pulse ring-2 ring-emerald/20" />
-          <span className="text-silver-frost font-medium font-mono">Engine Online</span>
+          <span
+            className={cn(
+              'w-2 h-2 rounded-full',
+              status === 'HEALTHY' && 'bg-emerald',
+              status === 'DEGRADED' && 'bg-warning-amber',
+              status === 'OFFLINE' && 'bg-signal-red',
+              (status === 'CHECKING' || status === 'STALE') && 'bg-titanium'
+            )}
+          />
+          <span className="text-silver-frost font-medium font-mono">
+            {status === 'HEALTHY' && 'Gateway Online'}
+            {status === 'DEGRADED' && 'Circuit Degraded'}
+            {status === 'OFFLINE' && 'Gateway Offline'}
+            {status === 'CHECKING' && 'Checking Engine...'}
+            {status === 'STALE' && 'Status Stale'}
+          </span>
         </div>
-        <span className="text-titanium font-mono text-[10px]">v1.0</span>
+        <span className="text-titanium font-mono text-[10px]">
+          {healthData?.serviceName || 'v1.0'}
+        </span>
       </div>
 
       {/* Role / User Profile Card */}

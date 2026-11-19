@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { consumerService } from '@/services/consumerService'
 import { apiKeyService } from '@/services/apiKeyService'
 import { useAuth } from '@/context/AuthContext'
@@ -38,13 +38,24 @@ export const ApiKeys: React.FC = () => {
 
   const [selectedConsumerId, setSelectedConsumerId] = useState<string>('')
   const [searchQuery, setSearchQuery] = useState<string>('')
+  const [searchParams, setSearchParams] = useSearchParams()
 
   // Create Key Modal
-  const [isCreateOpen, setIsCreateOpen] = useState<boolean>(false)
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false)
+  const isCreateOpen = isCreateModalOpen || (searchParams.get('action') === 'create' && canMutate())
   const [createConsumerId, setCreateConsumerId] = useState<string>('')
   const [keyLabel, setKeyLabel] = useState<string>('')
   const [selectedScopes, setSelectedScopes] = useState<string[]>(['gateway:invoke'])
   const [expiresAtInput, setExpiresAtInput] = useState<string>('')
+
+  const handleCloseCreate = () => {
+    setIsCreateModalOpen(false)
+    if (searchParams.get('action') === 'create') {
+      const newParams = new URLSearchParams(searchParams)
+      newParams.delete('action')
+      setSearchParams(newParams, { replace: true })
+    }
+  }
 
   // ONE-TIME SECRET MODAL STATE
   const [secretModalOpen, setSecretModalOpen] = useState<boolean>(false)
@@ -87,7 +98,7 @@ export const ApiKeys: React.FC = () => {
         expiresAt: payload.expiresAt,
       }),
     onSuccess: (result, variables) => {
-      setIsCreateOpen(false)
+      handleCloseCreate()
       setKeyLabel('')
       setSelectedScopes(['gateway:invoke'])
       setExpiresAtInput('')
@@ -181,7 +192,7 @@ export const ApiKeys: React.FC = () => {
               size="sm"
               onClick={() => {
                 setCreateConsumerId(selectedConsumerId || (consumers[0]?.id || ''))
-                setIsCreateOpen(true)
+                setIsCreateModalOpen(true)
               }}
               className="text-xs shadow-sm bg-indigo-600 hover:bg-indigo-500"
             >
@@ -338,7 +349,7 @@ export const ApiKeys: React.FC = () => {
       {/* Modal: Provision API Key */}
       <Modal
         isOpen={isCreateOpen}
-        onClose={() => setIsCreateOpen(false)}
+        onClose={handleCloseCreate}
         title="Provision Consumer API Key"
         description="Generates an authentication key. Plaintext credential is displayed exactly once."
       >
@@ -395,7 +406,7 @@ export const ApiKeys: React.FC = () => {
           />
 
           <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
-            <Button variant="ghost" type="button" onClick={() => setIsCreateOpen(false)}>
+            <Button variant="ghost" type="button" onClick={handleCloseCreate}>
               Cancel
             </Button>
             <Button variant="primary" type="submit" isLoading={createKeyMutation.isPending}>

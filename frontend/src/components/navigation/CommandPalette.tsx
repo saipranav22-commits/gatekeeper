@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import {
@@ -33,7 +33,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const navigate = useNavigate()
-  const { logout } = useAuth()
+  const { logout, canMutate } = useAuth()
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -110,30 +110,34 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
         onClose()
       },
     },
-    {
-      id: 'action-register-consumer',
-      title: 'Register New Consumer',
-      description: 'Provision a new client tenant with dedicated subscription tier',
-      category: 'Quick Actions',
-      icon: PlusCircle,
-      keywords: ['create consumer', 'new client', 'add developer'],
-      perform: () => {
-        navigate('/consumers?action=register')
-        onClose()
-      },
-    },
-    {
-      id: 'action-create-key',
-      title: 'Generate API Key',
-      description: 'Create an encrypted API key for an active consumer',
-      category: 'Quick Actions',
-      icon: KeyRound,
-      keywords: ['new key', 'create token', 'generate credential'],
-      perform: () => {
-        navigate('/api-keys?action=create')
-        onClose()
-      },
-    },
+    ...(canMutate()
+      ? [
+          {
+            id: 'action-register-consumer',
+            title: 'Register New Consumer',
+            description: 'Provision a new client tenant with dedicated subscription tier',
+            category: 'Quick Actions' as const,
+            icon: PlusCircle,
+            keywords: ['create consumer', 'new client', 'add developer'],
+            perform: () => {
+              navigate('/consumers?action=register')
+              onClose()
+            },
+          },
+          {
+            id: 'action-create-key',
+            title: 'Generate API Key',
+            description: 'Create an encrypted API key for an active consumer',
+            category: 'Quick Actions' as const,
+            icon: KeyRound,
+            keywords: ['new key', 'create token', 'generate credential'],
+            perform: () => {
+              navigate('/api-keys?action=create')
+              onClose()
+            },
+          },
+        ]
+      : []),
     {
       id: 'action-signout',
       title: 'Sign Out of Gateway',
@@ -161,16 +165,17 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
 
   // Keyboard navigation within palette
   useEffect(() => {
-    setSelectedIndex(0)
-  }, [query])
-
-  useEffect(() => {
     if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 50)
-    } else {
-      setQuery('')
+      const timer = setTimeout(() => inputRef.current?.focus(), 50)
+      return () => clearTimeout(timer)
     }
   }, [isOpen])
+
+  const handleClose = useCallback(() => {
+    setQuery('')
+    setSelectedIndex(0)
+    onClose()
+  }, [onClose])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -178,7 +183,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
 
       if (e.key === 'Escape') {
         e.preventDefault()
-        onClose()
+        handleClose()
       } else if (e.key === 'ArrowDown') {
         e.preventDefault()
         setSelectedIndex((prev) => (prev < filteredCommands.length - 1 ? prev + 1 : 0))
@@ -188,21 +193,24 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
       } else if (e.key === 'Enter') {
         e.preventDefault()
         if (filteredCommands[selectedIndex]) {
-          filteredCommands[selectedIndex].perform()
+          const action = filteredCommands[selectedIndex]
+          setQuery('')
+          setSelectedIndex(0)
+          action.perform()
         }
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, filteredCommands, selectedIndex, onClose])
+  }, [isOpen, filteredCommands, selectedIndex, handleClose])
 
   if (!isOpen) return null
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center pt-20 p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150"
-      onClick={onClose}
+      onClick={handleClose}
       role="dialog"
       aria-modal="true"
       aria-label="Command Palette"
@@ -218,7 +226,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
             ref={inputRef}
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setSelectedIndex(0)
+            }}
             placeholder="Search commands, screens, or actions... (e.g. 'consumers', 'key', 'logout')"
             className="w-full bg-transparent text-silver-frost placeholder:text-titanium-muted text-sm focus:outline-none"
             aria-label="Search commands"

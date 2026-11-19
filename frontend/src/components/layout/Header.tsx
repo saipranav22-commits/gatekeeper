@@ -1,7 +1,9 @@
 import React from 'react'
 import { Menu, LogOut, ShieldCheck, Search } from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
+import { useGatewayHealth } from '@/context/GatewayHealthContext'
 import { Button } from '@/components/ui/Button'
+import { cn } from '@/lib/utils'
 
 interface HeaderProps {
   onOpenMobile: () => void
@@ -10,6 +12,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onOpenMobile, onOpenCommandPalette }) => {
   const { admin, logout } = useAuth()
+  const { status, lastChecked, refetch } = useGatewayHealth()
 
   return (
     <header className="h-16 bg-surface/80 backdrop-blur-md border-b border-moss/40 px-4 sm:px-6 flex items-center justify-between shrink-0 sticky top-0 z-30 shadow-card-dark">
@@ -23,15 +26,49 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobile, onOpenCommandPalet
           <Menu className="w-5 h-5" />
         </button>
 
-        {/* Real-time telemetry beacon */}
-        <div className="flex items-center gap-2 text-xs font-mono font-medium text-emerald bg-emerald/10 px-3 py-1 rounded-full border border-emerald/30 shadow-xs">
+        {/* Real-time telemetry beacon derived from real health */}
+        <button
+          type="button"
+          onClick={() => refetch()}
+          title={lastChecked ? `Last checked: ${lastChecked.toLocaleTimeString()} (Click to re-verify)` : 'Click to verify health'}
+          className={cn(
+            'flex items-center gap-2 text-xs font-mono font-medium px-3 py-1 rounded-full border shadow-xs transition-colors cursor-pointer',
+            status === 'HEALTHY' && 'text-emerald bg-emerald/10 border-emerald/30',
+            status === 'DEGRADED' && 'text-warning-amber bg-warning-amber/10 border-warning-amber/30',
+            status === 'OFFLINE' && 'text-signal-red bg-signal-red/10 border-signal-red/30',
+            (status === 'CHECKING' || status === 'STALE') && 'text-titanium bg-surface-elevated border-moss-subtle'
+          )}
+          aria-label={`Gateway status: ${status}`}
+        >
           <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald"></span>
+            {status === 'HEALTHY' && (
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald"></span>
+            )}
+            {status === 'DEGRADED' && (
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-warning-amber"></span>
+            )}
+            {status === 'OFFLINE' && (
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-signal-red"></span>
+            )}
+            {(status === 'CHECKING' || status === 'STALE') && (
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-titanium"></span>
+            )}
           </span>
-          <span className="hidden sm:inline">Gateway Telemetry Active</span>
-          <span className="sm:hidden">Active</span>
-        </div>
+          <span className="hidden sm:inline">
+            {status === 'HEALTHY' && 'Gateway Online'}
+            {status === 'DEGRADED' && 'Gateway Degraded'}
+            {status === 'OFFLINE' && 'Gateway Offline'}
+            {status === 'CHECKING' && 'Checking Gateway...'}
+            {status === 'STALE' && 'Status Stale'}
+          </span>
+          <span className="sm:hidden">
+            {status === 'HEALTHY' && 'Online'}
+            {status === 'DEGRADED' && 'Degraded'}
+            {status === 'OFFLINE' && 'Offline'}
+            {status === 'CHECKING' && 'Checking'}
+            {status === 'STALE' && 'Stale'}
+          </span>
+        </button>
       </div>
 
       {/* Middle: Command Palette trigger */}

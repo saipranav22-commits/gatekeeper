@@ -1,10 +1,12 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { CommandPalette } from '@/components/navigation/CommandPalette'
-import { AuthProvider } from '@/context/AuthContext'
 
 const mockNavigate = vi.fn()
+const mockLogout = vi.fn()
+let mockCanMutate = true
+
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual('react-router-dom')
   return {
@@ -13,14 +15,36 @@ vi.mock('react-router-dom', async () => {
   }
 })
 
+vi.mock('@/context/AuthContext', async () => {
+  const actual = await vi.importActual('@/context/AuthContext')
+  return {
+    ...actual,
+    useAuth: () => ({
+      admin: { id: 'admin-1', username: 'admin', email: 'admin@gatekeeper.local', role: 'ROLE_ADMIN' },
+      token: 'mock-token',
+      isAuthenticated: true,
+      isLoading: false,
+      login: vi.fn(),
+      logout: mockLogout,
+      changePassword: vi.fn(),
+      hasRole: () => true,
+      canMutate: () => mockCanMutate,
+      isSuperAdmin: () => false,
+    }),
+  }
+})
+
 describe('CommandPalette Component', () => {
+  beforeEach(() => {
+    mockCanMutate = true
+    vi.clearAllMocks()
+  })
+
   const renderPalette = (isOpen = true, onClose = vi.fn()) => {
     return render(
-      <AuthProvider>
-        <MemoryRouter>
-          <CommandPalette isOpen={isOpen} onClose={onClose} />
-        </MemoryRouter>
-      </AuthProvider>
+      <MemoryRouter>
+        <CommandPalette isOpen={isOpen} onClose={onClose} />
+      </MemoryRouter>
     )
   }
 
@@ -75,5 +99,16 @@ describe('CommandPalette Component', () => {
 
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(onClose).toHaveBeenCalled()
+  })
+
+  it('enforces RBAC by hiding creation actions when operator lacks mutation permissions', () => {
+    mockCanMutate = false
+    renderPalette(true)
+
+    const input = screen.getByPlaceholderText(/search commands/i)
+    fireEvent.change(input, { target: { value: 'consumer' } })
+
+    expect(screen.getByText(/Consumers & Developers/i)).toBeInTheDocument()
+    expect(screen.queryByText(/Register New Consumer/i)).not.toBeInTheDocument()
   })
 })

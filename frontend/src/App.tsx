@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from '@/context/AuthContext'
 import { ToastProvider } from '@/context/ToastContext'
+import { GatewayHealthProvider } from '@/context/GatewayHealthContext'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { AppLayout } from '@/components/layout/AppLayout'
 
@@ -31,33 +32,35 @@ export const App: React.FC = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <ToastProvider>
-          <BrowserRouter>
-            <Routes>
-              {/* Public Routes */}
-              <Route path="/login" element={<Login />} />
+        <GatewayHealthProvider>
+          <ToastProvider>
+            <BrowserRouter>
+              <Routes>
+                {/* Public Routes */}
+                <Route path="/login" element={<Login />} />
 
-              {/* Protected Platform Routes */}
-              <Route
-                element={
-                  <ProtectedRoute>
-                    <AppLayout />
-                  </ProtectedRoute>
-                }
-              >
-                <Route path="/" element={<Overview />} />
-                <Route path="/consumers" element={<Consumers />} />
-                <Route path="/consumers/:consumerId" element={<ConsumerDetail />} />
-                <Route path="/api-keys" element={<ApiKeys />} />
-                <Route path="/plans" element={<Plans />} />
-                <Route path="/analytics" element={<Analytics />} />
-                <Route path="/security" element={<Security />} />
-                <Route path="/404" element={<NotFound />} />
-                <Route path="*" element={<Navigate to="/404" replace />} />
-              </Route>
-            </Routes>
-          </BrowserRouter>
-        </ToastProvider>
+                {/* Protected Platform Routes */}
+                <Route
+                  element={
+                    <ProtectedRoute>
+                      <AppLayout />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route path="/" element={<Overview />} />
+                  <Route path="/consumers" element={<Consumers />} />
+                  <Route path="/consumers/:consumerId" element={<ConsumerDetail />} />
+                  <Route path="/api-keys" element={<ApiKeys />} />
+                  <Route path="/plans" element={<Plans />} />
+                  <Route path="/analytics" element={<Analytics />} />
+                  <Route path="/security" element={<Security />} />
+                  <Route path="/404" element={<NotFound />} />
+                  <Route path="*" element={<Navigate to="/404" replace />} />
+                </Route>
+              </Routes>
+            </BrowserRouter>
+          </ToastProvider>
+        </GatewayHealthProvider>
       </AuthProvider>
     </QueryClientProvider>
   )
