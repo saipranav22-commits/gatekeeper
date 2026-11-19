@@ -97,19 +97,23 @@ Gateway waits for Postgres, Redis, Orders, and Inventory to report `healthy` bef
 
 ## 4. Reverse Proxy, Proxy Headers & TLS Termination
 
-### Trusted Edge Proxy Architecture
-To prevent header spoofing attacks while supporting upstream TLS termination (e.g., Caddy, AWS ALB, Cloudflare, Traefik), `frontend/nginx.conf` implements a strict **Trusted Edge Proxy Model**:
+### Narrowly Defined Trusted Edge Proxy Architecture
+To prevent header spoofing attacks while supporting upstream TLS termination (e.g., Caddy, AWS ALB, Cloudflare, Traefik), `frontend/nginx.conf` implements a strictly scoped **Trusted Edge Proxy Model**. Broad RFC 1918 CIDRs (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) are explicitly disallowed because trusting entire private blocks would allow sibling containers or adjacent cloud VPC tenants to forge client identity, host, or protocol state.
 
 ```nginx
 geo $remote_addr $trusted_edge_proxy {
     default 0;
     127.0.0.1 1;
     ::1 1;
-    10.0.0.0/8 1;
-    172.16.0.0/12 1;
-    192.168.0.0/16 1;
+    # Deployment-specific trusted edge proxy addresses:
+    # Operators: Add specific, dedicated static ingress proxy IPs or narrow /32 /28 subnets here.
+    # Broad RFC 1918 CIDRs (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) MUST NOT be added.
+    # Example:
+    # 192.0.2.10/32 1;        # Dedicated cloud ingress load balancer
+    # 172.28.0.2/32 1;        # Specific upstream edge proxy container IP
 }
 
+# --- Protocol Sanitization ---
 map $http_x_forwarded_proto $edge_proto {
     default $http_x_forwarded_proto;
     ""      $scheme;
@@ -119,15 +123,38 @@ map $trusted_edge_proxy $forwarded_proto {
     1       $edge_proto;
     default $scheme;
 }
+
+# --- Host Header Sanitization ---
+map $http_x_forwarded_host $edge_host {
+    default $http_x_forwarded_host;
+    ""      $host;
+}
+
+map $trusted_edge_proxy $forwarded_host {
+    1       $edge_host;
+    default $host;
+}
+
+# --- Client IP Sanitization ---
+map $trusted_edge_proxy $forwarded_for {
+    1       $proxy_add_x_forwarded_for;
+    default $remote_addr;
+}
 ```
 
-### Security Behaviors Under Different Ingress Scenarios:
-1. **Direct Untrusted HTTP Access**:
-   When an external client connects directly to Nginx over HTTP without an intermediate edge proxy, `$trusted_edge_proxy` evaluates to `0`. Nginx strictly binds `X-Forwarded-Proto` to the actual connection `$scheme` (`http`), ignoring any client-injected headers.
-2. **Legitimate HTTPS Behind Edge Proxy (Caddy / ALB / Cloudflare)**:
-   When an edge proxy terminates TLS in a trusted CIDR (e.g. Docker bridge `172.16.0.0/12` or VPC `10.0.0.0/8`) and forwards `X-Forwarded-Proto: https`, `$trusted_edge_proxy` evaluates to `1`. Nginx preserves `https` and forwards it to the Gateway.
-3. **Malicious Client Header Spoofing**:
-   If an untrusted external attacker sends `X-Forwarded-Proto: https` directly to Nginx over plain HTTP to fool Spring Boot's redirect or cookie policies, Nginx detects the untrusted source IP (`$trusted_edge_proxy = 0`), discards the attacker's value, and sets `X-Forwarded-Proto: http`.
+### Security Behaviors Under Ingress Scenarios:
+1. **Direct Untrusted Client Connections**:
+   When a client connects directly to Nginx over HTTP, `$trusted_edge_proxy` evaluates to `0`. Nginx strictly enforces:
+   - `X-Forwarded-Proto`: Set to connection `$scheme` (`http`), stripping client-supplied `https`.
+   - `X-Forwarded-Host`: Set to connection `$host`, preventing Host header injection attacks.
+   - `X-Forwarded-For`: Set to connection `$remote_addr`, discarding any forged IP chain.
+2. **Legitimate HTTPS Behind Explicit Edge Proxy (Caddy / ALB / Cloudflare)**:
+   When an edge proxy terminates TLS and connects from an explicitly declared trusted IP or loopback, `$trusted_edge_proxy` evaluates to `1`. Nginx preserves:
+   - `X-Forwarded-Proto`: Preserves `https` forwarded from edge.
+   - `X-Forwarded-Host`: Preserves original domain name requested by client.
+   - `X-Forwarded-For`: Appends client and proxy hops via `$proxy_add_x_forwarded_for`.
+3. **Malicious Sibling Container / Network Spoofing**:
+   If an adjacent container on the Docker network or LAN attempts to send forged headers, `$trusted_edge_proxy` evaluates to `0` because internal Docker bridge ranges are not implicitly trusted. The forged headers are neutralized.
 
 ### Spring Boot Forwarded Header Strategy
 The Gateway backend consumes these sanitized headers through:
@@ -135,7 +162,7 @@ The Gateway backend consumes these sanitized headers through:
 server:
   forward-headers-strategy: framework
 ```
-This ensures Spring Boot correctly determines the real client IP and protocol without vulnerability to header injection from untrusted clients.
+Verified via automated integration test `ForwardedHeaderSecurityTest` and Nginx configuration test `nginxSecurityConfig.test.ts`.
 
 ---
 

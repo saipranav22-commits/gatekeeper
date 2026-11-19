@@ -1,0 +1,21 @@
+# ==============================================================================
+# Gatekeeper Gitleaks Secret Scanner Configuration
+# ==============================================================================
+# Extends standard Gitleaks rule definitions while defining explicit allowlists
+# for test fixtures, mock secrets, and example documentation.
+# ==============================================================================
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Permit synthetic mock secrets in test fixtures, docs, and example templates"
+paths = [
+    '''backend/src/test/''',
+    '''frontend/src/test/''',
+    '''services/orders-service/src/test/''',
+    '''services/inventory-service/src/test/''',
+    '''\.env\.example$''',
+    '''docs/''',
+    '''README\.md$'''
+]
