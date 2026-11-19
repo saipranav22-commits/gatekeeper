@@ -4,15 +4,31 @@
 
 | Attribute | State | Details |
 |---|---|---|
-| **Publication Status** | **`PREPARED`** | Local repository verified; remote discovery complete; awaiting explicit user approval before publishing. |
-| **Local Branch** | `master` | Head commit `42e8461` (`security: finalize trusted ingress and pre-push checks`). |
-| **Remote Repository** | *Pending User Authorization* | Proposed: `https://github.com/<user-or-org>/gatekeeper.git` (Private). |
-| **CI Execution Status** | **`NOT_EXECUTED`** | Awaiting first git push; zero GitHub Actions runs executed to date. |
-| **Local Working Tree** | Clean | Zero uncommitted modifications, zero untracked sensitive files. |
+| **Publication Status** | **`PUBLISHED` / `FIX_PENDING_APPROVAL`** | Initial push completed to GitHub; first CI run diagnosed; runtime fix prepared locally. |
+| **Local Branch** | `master` | Head commit pending user approval for push. |
+| **Remote Repository** | `https://github.com/saipranav22-commits/gatekeeper` | Remote origin configured. |
+| **CI Execution Status** | **`CI_FAILED` (Frontend Vitest) -> `FIX_PREPARED`** | Backend, microservices, and security jobs passed; frontend-test failed on Node 20 / Undici incompatibility. |
+| **Local Working Tree** | Clean | All 32 frontend tests passing; production bundle building cleanly. |
 
 ---
 
-## 1. Pre-Publication Security Baseline
+## 1. Initial CI Run Diagnosis (Run #1)
+
+During the first GitHub Actions run on commit `11c5811`:
+- **`backend-test`**: **`PASS`** (PostgreSQL 16 + Redis 7 + Flyway + full test suite passed).
+- **`microservices-test`**: **`PASS`** (Orders and Inventory microservices passed).
+- **`security-gate`**: **`PASS`** (Gitleaks + chaos profile lockout + secret exclusion passed).
+- **`frontend-test`**: **`FAIL`** (During `npm test`, Vitest 5.1.0 failed before tests ran).
+- **`docker-validation`**: **`SKIPPED`** (Prerequisite `frontend-test` failed).
+
+### Root Cause Analysis:
+- **Error**: `Error: [vitest-pool]: Failed to start forks worker: TypeError: Cannot read properties of undefined (reading 'bind') at node_modules/undici/lib/interceptor/decompress.js:78:30`.
+- **Mechanism**: `jsdom@31.0.1` depends on `undici@^8.12.3` (installed `undici@8.12.4`). `undici@8.12.4` requires Node.js `>=22.19.0` because it binds `createZstdDecompress` from `node:zlib`. In Node.js 20, `createZstdDecompress` is `undefined`.
+- **Durable Resolution**: Aligned CI Node version to `22` (Active LTS), updated `frontend/Dockerfile` builder to `node:22-alpine`, and declared `"engines": { "node": ">=22.19.0", "npm": ">=10.0.0" }` in `frontend/package.json`.
+
+---
+
+## 2. Pre-Publication Security Baseline
 
 - **Tracked Secrets**: `0` sensitive files (`.env`, `.pem`, `.key`, `.pkcs12` excluded via `.gitignore`).
 - **Production Secrets**: Driven 100% by environment variables in `application-prod.yml` and `docker-compose.deploy.yml`. Zero hardcoded passwords.
