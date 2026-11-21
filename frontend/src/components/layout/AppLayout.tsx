@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 import { Header } from './Header'
 import { CommandPalette } from '@/components/navigation/CommandPalette'
+import { isDemoMode } from '@/config/appMode'
 
 export const AppLayout: React.FC = () => {
   const [mobileOpen, setMobileOpen] = useState<boolean>(false)
@@ -42,6 +43,22 @@ export const AppLayout: React.FC = () => {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-canvas">
+        {/* Persistent Recruiter Demo Mode Banner */}
+        {isDemoMode() && (
+          <div className="bg-surface-elevated/90 border-b border-moss/40 px-4 py-2 flex flex-wrap items-center justify-between text-xs font-mono text-titanium gap-2 shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded bg-emerald/20 text-emerald font-semibold border border-emerald/30 uppercase tracking-wider text-[10px]">
+                Interactive Demo
+              </span>
+              <span>Demonstration dataset & simulated policy engine. No live backend required.</span>
+            </div>
+            <div className="hidden md:flex items-center gap-2 text-titanium/80">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald animate-pulse" />
+              <span>Real Spring Boot 3.3.5 / Redis engine verified locally</span>
+            </div>
+          </div>
+        )}
+
         <Header
           onOpenMobile={() => setMobileOpen(true)}
           onOpenCommandPalette={() => setCommandPaletteOpen(true)}

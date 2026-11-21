@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useGatewayHealth } from '@/context/GatewayHealthContext'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
+import { isDemoMode } from '@/config/appMode'
 
 interface HeaderProps {
   onOpenMobile: () => void
@@ -103,7 +104,14 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobile, onOpenCommandPalet
         </button>
 
         <div className="hidden sm:flex flex-col items-end text-right">
-          <span className="text-xs font-semibold text-silver-frost">{admin?.username || 'Operator'}</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-silver-frost">{admin?.username || 'Operator'}</span>
+            {isDemoMode() && (
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald/20 text-emerald border border-emerald/30 font-bold">
+                DEMO
+              </span>
+            )}
+          </div>
           <span className="text-[10px] text-titanium font-mono">{admin?.email || 'admin@gatekeeper.local'}</span>
         </div>
 

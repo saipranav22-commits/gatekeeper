@@ -5,6 +5,8 @@ import {
   ChaosScenarioType,
   ScenarioDefinition,
 } from '@/types/chaos'
+import { isDemoMode } from '@/config/appMode'
+import { demoChaosService } from '@/demo/services/demoChaosService'
 
 export const CHAOS_SCENARIO_DEFINITIONS: Record<ChaosScenarioType, ScenarioDefinition> = {
   ORDERS_OUTAGE: {
@@ -571,6 +573,9 @@ export const chaosService = {
    * Strictly gated: Requires SUPER_ADMIN or ADMIN role.
    */
   async runExperiment(request: ChaosRunRequest): Promise<ChaosExperiment> {
+    if (isDemoMode()) {
+      return demoChaosService.runExperiment(request)
+    }
     const response = await apiClient.post<ChaosExperiment>('/api/v1/chaos/experiments/run', request, {
       timeout: 30000,
     })
@@ -584,6 +589,9 @@ export const chaosService = {
    * Returns verified historical benchmark test evidence.
    */
   getHistoricalExperiments(): ChaosExperiment[] {
+    if (isDemoMode()) {
+      return demoChaosService.getHistoricalExperiments()
+    }
     return HISTORICAL_CHAOS_RESULTS
   },
 
