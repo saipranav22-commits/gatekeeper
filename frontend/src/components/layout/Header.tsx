@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext'
 import { useGatewayHealth } from '@/context/GatewayHealthContext'
 import { Button } from '@/components/ui/Button'
 import { cn } from '@/lib/utils'
+import { isDemoMode } from '@/config/appMode'
 
 interface HeaderProps {
   onOpenMobile: () => void
@@ -35,7 +36,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobile, onOpenCommandPalet
             'flex items-center gap-2 text-xs font-mono font-medium px-3 py-1 rounded-full border shadow-xs transition-colors cursor-pointer',
             status === 'HEALTHY' && 'text-emerald bg-emerald/10 border-emerald/30',
             status === 'DEGRADED' && 'text-warning-amber bg-warning-amber/10 border-warning-amber/30',
-            status === 'OFFLINE' && 'text-signal-red bg-signal-red/10 border-signal-red/30',
+            (status === 'UNHEALTHY' || status === 'OFFLINE') && 'text-signal-red bg-signal-red/10 border-signal-red/30',
+            status === 'RECOVERING' && 'text-sky-400 bg-sky-500/10 border-sky-500/30',
             (status === 'CHECKING' || status === 'STALE') && 'text-titanium bg-surface-elevated border-moss-subtle'
           )}
           aria-label={`Gateway status: ${status}`}
@@ -47,8 +49,11 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobile, onOpenCommandPalet
             {status === 'DEGRADED' && (
               <span className="relative inline-flex rounded-full h-2 w-2 bg-warning-amber"></span>
             )}
-            {status === 'OFFLINE' && (
+            {(status === 'UNHEALTHY' || status === 'OFFLINE') && (
               <span className="relative inline-flex rounded-full h-2 w-2 bg-signal-red"></span>
+            )}
+            {status === 'RECOVERING' && (
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-400"></span>
             )}
             {(status === 'CHECKING' || status === 'STALE') && (
               <span className="relative inline-flex rounded-full h-2 w-2 bg-titanium"></span>
@@ -57,6 +62,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobile, onOpenCommandPalet
           <span className="hidden sm:inline">
             {status === 'HEALTHY' && 'Gateway Online'}
             {status === 'DEGRADED' && 'Gateway Degraded'}
+            {status === 'UNHEALTHY' && 'Gateway Unhealthy'}
+            {status === 'RECOVERING' && 'Gateway Recovering'}
             {status === 'OFFLINE' && 'Gateway Offline'}
             {status === 'CHECKING' && 'Checking Gateway...'}
             {status === 'STALE' && 'Status Stale'}
@@ -64,6 +71,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobile, onOpenCommandPalet
           <span className="sm:hidden">
             {status === 'HEALTHY' && 'Online'}
             {status === 'DEGRADED' && 'Degraded'}
+            {status === 'UNHEALTHY' && 'Unhealthy'}
+            {status === 'RECOVERING' && 'Recovering'}
             {status === 'OFFLINE' && 'Offline'}
             {status === 'CHECKING' && 'Checking'}
             {status === 'STALE' && 'Stale'}
@@ -103,7 +112,14 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobile, onOpenCommandPalet
         </button>
 
         <div className="hidden sm:flex flex-col items-end text-right">
-          <span className="text-xs font-semibold text-silver-frost">{admin?.username || 'Operator'}</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-semibold text-silver-frost">{admin?.username || 'Operator'}</span>
+            {isDemoMode() && (
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald/20 text-emerald border border-emerald/30 font-bold">
+                DEMO
+              </span>
+            )}
+          </div>
           <span className="text-[10px] text-titanium font-mono">{admin?.email || 'admin@gatekeeper.local'}</span>
         </div>
 

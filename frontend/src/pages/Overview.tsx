@@ -10,6 +10,8 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { formatNumber, formatPercentage, formatDate } from '@/lib/utils'
+import { isDemoMode } from '@/config/appMode'
+import { DemoHealthScenarioSelector } from '@/components/demo/DemoHealthScenarioSelector'
 import {
   Activity,
   CheckCircle2,
@@ -81,7 +83,7 @@ export const Overview: React.FC = () => {
     refetch: refetchOverview,
     isFetching: overviewFetching,
   } = useQuery({
-    queryKey: ['analytics', 'overview', dateRange.start, dateRange.end],
+    queryKey: ['analytics', 'overview', dateRange.start, dateRange.end, gatewayHealthStatus],
     queryFn: () => analyticsService.getOverview(dateRange.start, dateRange.end),
     refetchInterval: pollingInterval > 0 ? pollingInterval : false,
   })
@@ -144,18 +146,45 @@ export const Overview: React.FC = () => {
   const operationalInsights = React.useMemo(() => {
     const insights: Array<{
       id: string
-      type: 'healthy' | 'warning' | 'critical'
+      type: 'healthy' | 'warning' | 'critical' | 'info'
       title: string
       description: string
     }> = []
 
     if (!overview) return insights
 
-    // Check circuit breaker status
+    // Scenario-specific explanations when simulated in demo mode or under active incident
+    if (gatewayHealthStatus === 'UNHEALTHY') {
+      insights.push({
+        id: 'simulated-unhealthy',
+        type: 'critical',
+        title: 'Critical Service Incident — Orders Upstream Circuit Breaker OPEN',
+        description:
+          'Orders Service (orders-service-v1) is unavailable. Resilience4j circuit breaker has transitioned to OPEN, shedding downstream requests to protect system integrity.',
+      })
+    } else if (gatewayHealthStatus === 'DEGRADED') {
+      insights.push({
+        id: 'simulated-degraded',
+        type: 'warning',
+        title: 'Upstream Latency Warning — Orders Service Degradation',
+        description:
+          'Orders Service (orders-service-v1) experiencing elevated failure rate (38.6%) and slow response calls (24.1%). Bulkhead concurrency permits restricted.',
+      })
+    } else if (gatewayHealthStatus === 'RECOVERING') {
+      insights.push({
+        id: 'simulated-recovering',
+        type: 'info',
+        title: 'Upstream Recovery in Progress — Circuit Breaker HALF_OPEN Probing',
+        description:
+          'Orders Service connectivity restored. Circuit breaker in HALF_OPEN trial state, executing trial requests with 4.8% error rate before transitioning to CLOSED.',
+      })
+    }
+
+    // Check circuit breaker status if not already added above
     const trippedRoutes = (resilienceData || []).filter(
       (r) => r.circuitBreakerState === 'OPEN' || r.circuitBreakerState === 'HALF_OPEN'
     )
-    if (trippedRoutes.length > 0) {
+    if (trippedRoutes.length > 0 && gatewayHealthStatus === 'HEALTHY') {
       insights.push({
         id: 'circuit-tripped',
         type: 'critical',
@@ -176,8 +205,8 @@ export const Overview: React.FC = () => {
       })
     }
 
-    // Check 5xx error requests
-    if (overview.errorRequests > 0) {
+    // Check 5xx error requests (if healthy, to show background error rates)
+    if (overview.errorRequests > 0 && gatewayHealthStatus === 'HEALTHY') {
       insights.push({
         id: 'upstream-5xx',
         type: 'warning',
@@ -199,7 +228,7 @@ export const Overview: React.FC = () => {
     }
 
     return insights
-  }, [overview, resilienceData])
+  }, [overview, resilienceData, gatewayHealthStatus])
 
   // Calculate Success Rate %
   const successRate =
@@ -220,8 +249,10 @@ export const Overview: React.FC = () => {
                   ? 'success'
                   : gatewayHealthStatus === 'DEGRADED'
                   ? 'warning'
-                  : gatewayHealthStatus === 'OFFLINE'
+                  : gatewayHealthStatus === 'UNHEALTHY' || gatewayHealthStatus === 'OFFLINE'
                   ? 'danger'
+                  : gatewayHealthStatus === 'RECOVERING'
+                  ? 'recovering'
                   : 'default'
               }
             >
@@ -286,6 +317,11 @@ export const Overview: React.FC = () => {
         </div>
       </div>
 
+      {/* Recruiter Demo Health Scenario Selector */}
+      {isDemoMode() && (
+        <DemoHealthScenarioSelector />
+      )}
+
       {/* Disconnected / Error Warning Banner */}
       {overviewError && (
         <div
@@ -322,21 +358,42 @@ export const Overview: React.FC = () => {
       {resilienceData && Array.isArray(resilienceData) && resilienceData.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {resilienceData.map((route) => {
-            const isTripped =
-              route.circuitBreakerState === 'OPEN' || route.circuitBreakerState === 'HALF_OPEN'
+            const isOpen = route.circuitBreakerState === 'OPEN'
+            const isHalfOpen = route.circuitBreakerState === 'HALF_OPEN'
+            const isRecoveringTrial = isHalfOpen && (route.failureRate ?? 0) <= 10
+
+            const cardBorderClass = isOpen
+              ? 'border-signal-red/40 bg-surface shadow-card-dark'
+              : isHalfOpen
+              ? isRecoveringTrial
+                ? 'border-sky-500/40 bg-surface shadow-card-dark'
+                : 'border-warning-amber/40 bg-surface shadow-card-dark'
+              : 'border-moss-subtle bg-surface shadow-card-dark'
+
+            const iconClass = isOpen
+              ? 'bg-signal-red/10 text-signal-red border border-signal-red/30'
+              : isHalfOpen
+              ? isRecoveringTrial
+                ? 'bg-sky-500/10 text-sky-400 border border-sky-500/30'
+                : 'bg-warning-amber/10 text-warning-amber border border-warning-amber/30'
+              : 'bg-emerald/10 text-emerald border border-emerald/30'
+
+            const badgeVariant = isOpen
+              ? 'danger'
+              : isHalfOpen
+              ? isRecoveringTrial
+                ? 'recovering'
+                : 'warning'
+              : 'success'
+
             return (
               <div
                 key={route.routeId}
-                className="p-3.5 bg-surface rounded-xl border border-moss-subtle flex items-center justify-between text-xs shadow-card-dark"
+                data-testid={`resilience-card-${route.routeId}`}
+                className={`p-3.5 rounded-xl border flex items-center justify-between text-xs transition-colors ${cardBorderClass}`}
               >
                 <div className="flex items-center gap-3">
-                  <div
-                    className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                      isTripped
-                        ? 'bg-signal-red/10 text-signal-red border border-signal-red/30'
-                        : 'bg-emerald/10 text-emerald border border-emerald/30'
-                    }`}
-                  >
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${iconClass}`}>
                     <Server className="w-4 h-4" />
                   </div>
                   <div>
@@ -348,7 +405,7 @@ export const Overview: React.FC = () => {
                   </div>
                 </div>
                 <div className="text-right">
-                  <Badge variant={route.circuitBreakerState === 'CLOSED' ? 'success' : 'danger'}>
+                  <Badge variant={badgeVariant}>
                     {route.circuitBreakerState}
                   </Badge>
                   <div className="text-[10px] text-titanium mt-1 font-mono">
@@ -456,7 +513,17 @@ export const Overview: React.FC = () => {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold text-titanium uppercase tracking-wider">Errors (5xx)</span>
-              <div className="p-1.5 bg-surface-elevated text-titanium rounded-md border border-moss-subtle">
+              <div
+                className={`p-1.5 rounded-md border transition-colors ${
+                  gatewayHealthStatus === 'UNHEALTHY'
+                    ? 'bg-signal-red/10 text-signal-red border-signal-red/30'
+                    : gatewayHealthStatus === 'DEGRADED'
+                    ? 'bg-warning-amber/10 text-warning-amber border-warning-amber/30'
+                    : gatewayHealthStatus === 'RECOVERING'
+                    ? 'bg-sky-500/10 text-sky-400 border-sky-500/30'
+                    : 'bg-surface-elevated text-titanium border-moss-subtle'
+                }`}
+              >
                 <Zap className="w-3.5 h-3.5" />
               </div>
             </div>
@@ -464,7 +531,18 @@ export const Overview: React.FC = () => {
               {overviewLoading ? (
                 <Skeleton className="h-7 w-20" />
               ) : (
-                <div className="text-xl font-bold text-silver-frost tabular-nums">
+                <div
+                  data-testid="overview-5xx-metric"
+                  className={`text-xl font-bold tabular-nums transition-colors ${
+                    gatewayHealthStatus === 'UNHEALTHY'
+                      ? 'text-signal-red'
+                      : gatewayHealthStatus === 'DEGRADED'
+                      ? 'text-warning-amber'
+                      : gatewayHealthStatus === 'RECOVERING'
+                      ? 'text-sky-400'
+                      : 'text-silver-frost'
+                  }`}
+                >
                   {formatNumber(overview?.errorRequests)}
                 </div>
               )}
@@ -502,24 +580,41 @@ export const Overview: React.FC = () => {
           {operationalInsights.map((insight) => (
             <div
               key={insight.id}
-              className={`p-3.5 rounded-xl border flex items-start gap-3 text-xs ${
+              data-testid={`operational-insight-${insight.id}`}
+              className={`p-3.5 rounded-xl border flex items-start gap-3 text-xs transition-colors ${
                 insight.type === 'critical'
-                  ? 'bg-signal-red/10 border-signal-red/30 text-silver-frost'
+                  ? 'bg-signal-red/10 border-signal-red/40 text-silver-frost shadow-xs'
                   : insight.type === 'warning'
-                  ? 'bg-warning-amber/10 border-warning-amber/30 text-silver-frost'
-                  : 'bg-surface border-moss-subtle text-silver-frost'
+                  ? 'bg-warning-amber/10 border-warning-amber/40 text-silver-frost shadow-xs'
+                  : insight.type === 'info'
+                  ? 'bg-sky-500/10 border-sky-500/40 text-silver-frost shadow-xs'
+                  : 'bg-emerald/10 border-emerald/40 text-silver-frost shadow-xs'
               }`}
             >
               {insight.type === 'critical' ? (
                 <AlertTriangle className="w-4 h-4 text-signal-red shrink-0 mt-0.5" />
               ) : insight.type === 'warning' ? (
                 <AlertOctagon className="w-4 h-4 text-warning-amber shrink-0 mt-0.5" />
+              ) : insight.type === 'info' ? (
+                <Activity className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
               ) : (
                 <ShieldCheck className="w-4 h-4 text-emerald shrink-0 mt-0.5" />
               )}
               <div className="flex-1">
-                <span className="font-semibold">{insight.title}: </span>
-                <span className="text-titanium">{insight.description}</span>
+                <span
+                  className={`font-semibold ${
+                    insight.type === 'critical'
+                      ? 'text-signal-red'
+                      : insight.type === 'warning'
+                      ? 'text-warning-amber'
+                      : insight.type === 'info'
+                      ? 'text-sky-400'
+                      : 'text-emerald'
+                  }`}
+                >
+                  {insight.title}:{' '}
+                </span>
+                <span className="text-titanium leading-relaxed">{insight.description}</span>
               </div>
             </div>
           ))}

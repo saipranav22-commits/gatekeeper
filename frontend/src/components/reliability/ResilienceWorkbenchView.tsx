@@ -45,7 +45,11 @@ export const ResilienceWorkbenchView: React.FC<ResilienceWorkbenchViewProps> = (
       case 'CLOSED':
         return <Badge variant="success">CLOSED (NOMINAL)</Badge>
       case 'HALF_OPEN':
-        return <Badge variant="warning">HALF_OPEN (PROBING)</Badge>
+        return (activeSummary?.failureRate ?? 0) <= 10 ? (
+          <Badge variant="recovering">HALF_OPEN (RECOVERING)</Badge>
+        ) : (
+          <Badge variant="warning">HALF_OPEN (PROBING)</Badge>
+        )
       case 'OPEN':
         return <Badge variant="danger">OPEN (FAIL-FAST)</Badge>
       default:
@@ -71,6 +75,18 @@ export const ResilienceWorkbenchView: React.FC<ResilienceWorkbenchViewProps> = (
       <div className="flex flex-wrap items-center gap-2 border-b border-moss/30 pb-3">
         {summaries.map((s) => {
           const isSelected = s.routeId === selectedRouteId
+          const isTripped = s.circuitBreakerState === 'OPEN'
+          const isHalfOpen = s.circuitBreakerState === 'HALF_OPEN'
+          const isRecovering = isHalfOpen && (s.failureRate ?? 0) <= 10
+
+          const selectedClass = isTripped
+            ? 'bg-surface border-signal-red/60 text-signal-red font-semibold shadow-xs'
+            : isHalfOpen
+            ? isRecovering
+              ? 'bg-surface border-sky-500/60 text-sky-400 font-semibold shadow-xs'
+              : 'bg-surface border-warning/60 text-warning font-semibold shadow-xs'
+            : 'bg-surface border-emerald text-emerald font-semibold shadow-xs'
+
           return (
             <button
               key={s.routeId}
@@ -78,7 +94,7 @@ export const ResilienceWorkbenchView: React.FC<ResilienceWorkbenchViewProps> = (
               onClick={() => onSelectRoute(s.routeId)}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-xs transition-colors border ${
                 isSelected
-                  ? 'bg-surface border-emerald text-emerald font-semibold shadow-xs'
+                  ? selectedClass
                   : 'bg-canvas border-moss/30 text-titanium hover:text-silver-frost hover:border-moss/60'
               }`}
             >
@@ -88,7 +104,9 @@ export const ResilienceWorkbenchView: React.FC<ResilienceWorkbenchViewProps> = (
                   s.circuitBreakerState === 'CLOSED'
                     ? 'bg-emerald'
                     : s.circuitBreakerState === 'HALF_OPEN'
-                    ? 'bg-warning animate-pulse'
+                    ? (s.failureRate ?? 0) <= 10
+                      ? 'bg-sky-400 animate-pulse'
+                      : 'bg-warning animate-pulse'
                     : 'bg-signal-red animate-pulse'
                 }`}
               />
@@ -105,7 +123,17 @@ export const ResilienceWorkbenchView: React.FC<ResilienceWorkbenchViewProps> = (
             <div className="bg-surface border border-moss/30 rounded-xl p-5 space-y-4">
               <div className="flex items-center justify-between border-b border-moss/20 pb-3">
                 <div className="flex items-center gap-2.5">
-                  <div className="p-2 rounded-lg bg-emerald/10 border border-emerald/30 text-emerald">
+                  <div
+                    className={`p-2 rounded-lg border ${
+                      activeSummary.circuitBreakerState === 'OPEN'
+                        ? 'bg-signal-red/10 border-signal-red/30 text-signal-red'
+                        : activeSummary.circuitBreakerState === 'HALF_OPEN'
+                        ? (activeSummary.failureRate ?? 0) <= 10
+                          ? 'bg-sky-500/10 border-sky-500/30 text-sky-400'
+                          : 'bg-warning/10 border-warning/30 text-warning'
+                        : 'bg-emerald/10 border-emerald/30 text-emerald'
+                    }`}
+                  >
                     <Zap className="w-4 h-4" />
                   </div>
                   <div>

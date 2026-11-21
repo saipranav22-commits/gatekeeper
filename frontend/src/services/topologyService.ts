@@ -37,7 +37,7 @@ export const topologyService = {
     const inventoryResilience = routesResilience?.find((r) => r.routeId === 'inventory-service-v1')
 
     // 2. Derive Upstream Orders Status
-    let ordersStatus: 'HEALTHY' | 'DEGRADED' | 'DOWN' | 'UNKNOWN' = 'UNKNOWN'
+    let ordersStatus: 'HEALTHY' | 'DEGRADED' | 'DOWN' | 'UNKNOWN' | 'RECOVERING' = 'UNKNOWN'
     let ordersStatusReason = 'No telemetry observed yet for orders-service-v1'
     if (ordersResilience) {
       const fRate = typeof ordersResilience.failureRate === 'number' && Number.isFinite(ordersResilience.failureRate) ? ordersResilience.failureRate : 0
@@ -49,8 +49,13 @@ export const topologyService = {
         ordersStatus = 'DOWN'
         ordersStatusReason = `Circuit Breaker is OPEN (${formatPercent(fRate)}% failure rate, ${rejCalls} rejected)`
       } else if (ordersResilience.circuitBreakerState === 'HALF_OPEN') {
-        ordersStatus = 'DEGRADED'
-        ordersStatusReason = 'Circuit Breaker is HALF_OPEN (probing upstream recovery)'
+        if (fRate <= 10) {
+          ordersStatus = 'RECOVERING'
+          ordersStatusReason = `Circuit Breaker is HALF_OPEN (probing upstream recovery, trial error rate: ${formatPercent(fRate)}%)`
+        } else {
+          ordersStatus = 'DEGRADED'
+          ordersStatusReason = `Circuit Breaker is HALF_OPEN (elevated trial errors: ${formatPercent(fRate)}%)`
+        }
       } else if (fRate > 20 || sRate > 30) {
         ordersStatus = 'DEGRADED'
         ordersStatusReason = `Elevated error/latency rate: ${formatPercent(fRate)}% fail, ${formatPercent(sRate)}% slow`
@@ -61,7 +66,7 @@ export const topologyService = {
     }
 
     // 3. Derive Upstream Inventory Status
-    let inventoryStatus: 'HEALTHY' | 'DEGRADED' | 'DOWN' | 'UNKNOWN' = 'UNKNOWN'
+    let inventoryStatus: 'HEALTHY' | 'DEGRADED' | 'DOWN' | 'UNKNOWN' | 'RECOVERING' = 'UNKNOWN'
     let inventoryStatusReason = 'No telemetry observed yet for inventory-service-v1'
     if (inventoryResilience) {
       const fRate = typeof inventoryResilience.failureRate === 'number' && Number.isFinite(inventoryResilience.failureRate) ? inventoryResilience.failureRate : 0
@@ -114,7 +119,7 @@ export const topologyService = {
     }
 
     // 6. Gateway Core Status
-    let gwStatus: 'HEALTHY' | 'DEGRADED' | 'DOWN' | 'UNKNOWN' = 'UNKNOWN'
+    let gwStatus: 'HEALTHY' | 'DEGRADED' | 'DOWN' | 'UNKNOWN' | 'RECOVERING' = 'UNKNOWN'
     let gwReason = 'Checking gateway connectivity...'
     if (gatewayHealthStatus === 'HEALTHY') {
       gwStatus = 'HEALTHY'
@@ -122,6 +127,12 @@ export const topologyService = {
     } else if (gatewayHealthStatus === 'DEGRADED') {
       gwStatus = 'DEGRADED'
       gwReason = 'Gateway process responsive, but downstream dependencies or breakers are degraded'
+    } else if (gatewayHealthStatus === 'UNHEALTHY') {
+      gwStatus = 'DOWN'
+      gwReason = 'Critical upstream dependency failure (circuit breaker OPEN)'
+    } else if (gatewayHealthStatus === 'RECOVERING') {
+      gwStatus = 'RECOVERING'
+      gwReason = 'Gateway operational, upstream recovery trial in progress'
     } else if (gatewayHealthStatus === 'OFFLINE') {
       gwStatus = 'DOWN'
       gwReason = 'Gateway unresponsive to HTTP probes'

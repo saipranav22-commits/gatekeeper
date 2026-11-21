@@ -183,6 +183,9 @@ jobs:
       - name: Build Production Frontend Bundle
         run: npm run build
 
+      - name: Build Demo Frontend Bundle
+        run: npm run build:demo
+
   security-gate:
     name: Production Profile & Chaos Lockout Gate
     runs-on: ubuntu-latest

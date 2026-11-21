@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { isDemoMode } from '@/config/appMode'
 
 interface SidebarProps {
   onCloseMobile?: () => void
@@ -70,9 +71,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ onCloseMobile }) => {
             <h1 className="font-bold text-silver-frost text-base tracking-tight leading-none flex items-center gap-1.5">
               Gatekeeper
             </h1>
-            <span className="text-[10px] text-emerald font-mono font-medium uppercase tracking-widest">
-              Control Plane
-            </span>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-[10px] text-emerald font-mono font-medium uppercase tracking-widest">
+                Control Plane
+              </span>
+              {isDemoMode() && (
+                <span className="text-[9px] text-emerald bg-emerald/10 border border-emerald/30 px-1 py-0.2 rounded font-mono font-bold">
+                  DEMO
+                </span>
+              )}
+            </div>
           </div>
         </div>
         {onCloseMobile && (

@@ -1,4 +1,4 @@
-export type HealthStatus = 'HEALTHY' | 'DEGRADED' | 'OFFLINE' | 'CHECKING' | 'STALE'
+export type HealthStatus = 'HEALTHY' | 'DEGRADED' | 'UNHEALTHY' | 'RECOVERING' | 'OFFLINE' | 'CHECKING' | 'STALE'
 
 export interface HealthResponse {
   status: string

@@ -2,6 +2,15 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { AdminProfileDto, AdminRole, ChangePasswordRequest, LoginRequest } from '@/types/auth'
 import { authService } from '@/services/authService'
 import { registerUnauthorizedHandler, setAuthToken } from '@/lib/apiClient'
+import { isDemoMode } from '@/config/appMode'
+
+export const DEMO_ADMIN_PROFILE: AdminProfileDto = {
+  id: 'demo-recruiter-uuid',
+  username: 'demo-recruiter',
+  email: 'recruiter@portfolio.demo',
+  role: 'ROLE_ADMIN',
+  mustChangePassword: false,
+}
 
 interface AuthContextType {
   admin: AdminProfileDto | null
@@ -19,27 +28,38 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [admin, setAdmin] = useState<AdminProfileDto | null>(null)
-  const [token, setToken] = useState<string | null>(null)
+  const inDemo = isDemoMode()
+  const [admin, setAdmin] = useState<AdminProfileDto | null>(() => (inDemo ? DEMO_ADMIN_PROFILE : null))
+  const [token, setToken] = useState<string | null>(() => (inDemo ? 'demo-session-token' : null))
   const [isLoading, setIsLoading] = useState<boolean>(false)
 
   const logout = useCallback(() => {
-    authService.logout()
-    setAuthToken(null)
+    if (!isDemoMode()) {
+      authService.logout()
+      setAuthToken(null)
+    }
     setToken(null)
     setAdmin(null)
   }, [])
 
   useEffect(() => {
-    // Register 401 callback to immediately clear in-memory authentication
-    registerUnauthorizedHandler(() => {
-      logout()
-    })
+    // Register 401 callback to immediately clear in-memory authentication in live mode
+    if (!isDemoMode()) {
+      registerUnauthorizedHandler(() => {
+        logout()
+      })
+    }
   }, [logout])
 
   const login = async (credentials: LoginRequest): Promise<void> => {
     setIsLoading(true)
     try {
+      if (isDemoMode()) {
+        // Instant simulated login in demo mode with zero network requests
+        setToken('demo-session-token')
+        setAdmin(DEMO_ADMIN_PROFILE)
+        return
+      }
       const response = await authService.login(credentials)
       const token = response.accessToken || (response as unknown as { token?: string })?.token || null
       setToken(token)
@@ -52,6 +72,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const changePassword = async (request: ChangePasswordRequest): Promise<void> => {
     setIsLoading(true)
     try {
+      if (isDemoMode()) {
+        // Safe simulated password update in demo mode
+        return
+      }
       const response = await authService.changePassword(request)
       const token = response.accessToken || (response as unknown as { token?: string })?.token || null
       setToken(token)
@@ -72,7 +96,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const canMutate = useCallback((): boolean => {
     if (!admin) return false
-    // ROLE_ANALYST is read-only for management entities and keys
+    if (isDemoMode()) return true // Permit UI interaction in demonstration mode
     return admin.role === 'ROLE_SUPER_ADMIN' || admin.role === 'ROLE_ADMIN'
   }, [admin])
 

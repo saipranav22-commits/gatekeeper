@@ -1,6 +1,8 @@
 import { apiClient } from '@/lib/apiClient'
 import { RouteResilienceSummary } from '@/types/health'
 import { RouteResilienceDetail } from '@/types/resilience'
+import { isDemoMode } from '@/config/appMode'
+import { demoResilienceService } from '@/demo/services/demoResilienceService'
 
 export interface ResetCircuitBreakerResponse {
   routeId: string
@@ -51,6 +53,9 @@ export const resilienceService = {
    * Real endpoint: GET /api/v1/resilience/routes
    */
   async getRouteResilience(signal?: AbortSignal): Promise<RouteResilienceSummary[]> {
+    if (isDemoMode()) {
+      return demoResilienceService.getRouteResilience()
+    }
     const response = await apiClient.get<Record<string, unknown>[]>('/api/v1/resilience/routes', {
       signal,
       timeout: 5000,
@@ -59,14 +64,17 @@ export const resilienceService = {
   },
 
   /**
-   * Fetches detailed metrics and configuration for a specific route.
+   * Fetches detailed Resilience4j state (CircuitBreaker, Bulkhead, Retry) for a single route.
    * Real endpoint: GET /api/v1/resilience/routes/{routeId}
    */
   async getRouteResilienceDetail(routeId: string, signal?: AbortSignal): Promise<RouteResilienceDetail> {
-    const response = await apiClient.get<RouteResilienceDetail>(`/api/v1/resilience/routes/${encodeURIComponent(routeId)}`, {
-      signal,
-      timeout: 5000,
-    })
+    if (isDemoMode()) {
+      return demoResilienceService.getRouteResilienceDetail(routeId)
+    }
+    const response = await apiClient.get<RouteResilienceDetail>(
+      `/api/v1/resilience/routes/${encodeURIComponent(routeId)}`,
+      { signal, timeout: 5000 }
+    )
     return response.data
   },
 
@@ -76,9 +84,16 @@ export const resilienceService = {
    * Gated: Requires SUPER_ADMIN or ADMIN role.
    */
   async resetRouteCircuitBreaker(routeId: string): Promise<ResetCircuitBreakerResponse> {
+    if (isDemoMode()) {
+      return demoResilienceService.resetCircuitBreaker(routeId)
+    }
     const response = await apiClient.post<ResetCircuitBreakerResponse>(
       `/api/v1/resilience/routes/${encodeURIComponent(routeId)}/reset`
     )
     return response.data
+  },
+
+  async resetCircuitBreaker(routeId: string): Promise<ResetCircuitBreakerResponse> {
+    return this.resetRouteCircuitBreaker(routeId)
   },
 }

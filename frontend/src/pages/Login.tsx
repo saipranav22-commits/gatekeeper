@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { ShieldCheck, Lock, User, AlertCircle, Info } from 'lucide-react'
 import { NormalizedApiError } from '@/lib/apiClient'
+import { isDemoMode } from '@/config/appMode'
 
 const loginSchema = z.object({
   username: z
@@ -42,9 +43,9 @@ export const Login: React.FC = () => {
     },
   })
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated (in live mode only)
   React.useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && !isDemoMode()) {
       const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/'
       navigate(from, { replace: true })
     }
@@ -92,6 +93,33 @@ export const Login: React.FC = () => {
           <h1 className="text-2xl font-bold text-silver-frost tracking-tight">Gatekeeper Admin</h1>
           <p className="text-xs text-titanium font-mono">High-Performance API Gateway & Quota Management</p>
         </div>
+
+        {/* Portfolio Recruiter Direct Access in Demo Mode */}
+        {isDemoMode() && (
+          <div className="bg-surface border border-emerald/50 rounded-2xl p-6 shadow-emerald-sm backdrop-blur-md space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded bg-emerald/20 text-emerald text-xs font-mono font-bold border border-emerald/30">
+                INTERACTIVE DEMO MODE
+              </span>
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-base font-semibold text-silver-frost">Portfolio Recruiter Access</h2>
+              <p className="text-xs text-titanium font-mono">
+                No credentials required. Enter the Gatekeeper Control Plane directly to explore live-fidelity architecture, metrics, and policy simulation.
+              </p>
+            </div>
+            <Button
+              type="button"
+              className="w-full bg-emerald hover:bg-emerald/90 text-canvas font-mono font-bold"
+              onClick={async () => {
+                await login({ username: 'demo-recruiter', password: 'demo-password' })
+                navigate('/', { replace: true })
+              }}
+            >
+              Enter Demo Console →
+            </Button>
+          </div>
+        )}
 
         {/* Login form card */}
         <div className="bg-surface border border-moss/60 rounded-2xl p-6 sm:p-8 shadow-modal-dark backdrop-blur-md space-y-5">

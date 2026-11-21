@@ -7,9 +7,14 @@ import {
   TopConsumerDto,
   UsageEventDetailDto,
 } from '@/types/analytics'
+import { isDemoMode } from '@/config/appMode'
+import { demoAnalyticsService } from '@/demo/services/demoAnalyticsService'
 
 export const analyticsService = {
   async getOverview(start?: string, end?: string): Promise<AnalyticsOverviewDto> {
+    if (isDemoMode()) {
+      return demoAnalyticsService.getOverview(start, end)
+    }
     const params: Record<string, string> = {}
     if (start) params.start = start
     if (end) params.end = end
@@ -22,6 +27,9 @@ export const analyticsService = {
     end?: string,
     granularity: 'hourly' | 'daily' = 'hourly'
   ): Promise<TimeSeriesPointDto[]> {
+    if (isDemoMode()) {
+      return demoAnalyticsService.getTimeSeries(start, end, granularity)
+    }
     const params: Record<string, string> = { granularity }
     if (start) params.start = start
     if (end) params.end = end
@@ -30,6 +38,9 @@ export const analyticsService = {
   },
 
   async getConsumerAnalytics(consumerId: string, start?: string, end?: string): Promise<ConsumerAnalyticsDto> {
+    if (isDemoMode()) {
+      return demoAnalyticsService.getConsumerAnalytics(consumerId, start, end)
+    }
     const params: Record<string, string> = {}
     if (start) params.start = start
     if (end) params.end = end
@@ -44,6 +55,9 @@ export const analyticsService = {
     page: number = 0,
     size: number = 20
   ): Promise<PageableResponse<UsageEventDetailDto>> {
+    if (isDemoMode()) {
+      return demoAnalyticsService.getConsumerUsageEvents(consumerId, start, end, page, size)
+    }
     const params: Record<string, string | number> = { page, size }
     if (start) params.start = start
     if (end) params.end = end
@@ -55,6 +69,9 @@ export const analyticsService = {
   },
 
   async getTopConsumers(start?: string, end?: string, limit: number = 10): Promise<TopConsumerDto[]> {
+    if (isDemoMode()) {
+      return demoAnalyticsService.getTopConsumers(start, end, limit)
+    }
     const params: Record<string, string | number> = { limit }
     if (start) params.start = start
     if (end) params.end = end

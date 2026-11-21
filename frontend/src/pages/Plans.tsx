@@ -102,22 +102,28 @@ export const Plans: React.FC = () => {
                     : 'border-moss/40'
                 }`}
               >
-                {isEnterprise && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-emerald/20 border border-emerald/50 text-emerald font-mono font-bold text-[10px] tracking-wider uppercase rounded-full shadow-emerald-sm">
-                    High-Throughput Tier
-                  </div>
-                )}
-
                 <div>
                   <CardHeader className="pb-4">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg font-bold text-silver-frost">{plan.name}</CardTitle>
+                    <div className="flex items-center justify-between gap-2 mb-2 min-h-[22px]">
+                      <div>
+                        {isEnterprise ? (
+                          <span
+                            data-testid="enterprise-highlight-badge"
+                            className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase bg-emerald/20 border border-emerald/50 text-emerald shadow-emerald-sm whitespace-nowrap"
+                          >
+                            High-Throughput Tier
+                          </span>
+                        ) : (
+                          <span className="inline-block h-5" aria-hidden="true" />
+                        )}
+                      </div>
                       {plan.isActive ? (
                         <Badge variant="success">Active</Badge>
                       ) : (
                         <Badge variant="slate">Inactive</Badge>
                       )}
                     </div>
+                    <CardTitle className="text-lg font-bold text-silver-frost">{plan.name}</CardTitle>
                     <CardDescription className="text-xs text-titanium leading-relaxed mt-1">
                       {plan.description || 'Pre-configured rate limiting tier.'}
                     </CardDescription>

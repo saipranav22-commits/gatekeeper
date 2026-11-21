@@ -55,8 +55,12 @@ export const ServiceTopologyView: React.FC<ServiceTopologyViewProps> = ({
         return <Badge variant="success">HEALTHY</Badge>
       case 'DEGRADED':
         return <Badge variant="warning">DEGRADED</Badge>
+      case 'UNHEALTHY':
+        return <Badge variant="danger">UNHEALTHY</Badge>
       case 'DOWN':
         return <Badge variant="danger">DOWN</Badge>
+      case 'RECOVERING':
+        return <Badge variant="recovering">RECOVERING</Badge>
       case 'UNKNOWN':
       default:
         return <Badge variant="slate">UNKNOWN</Badge>
@@ -70,7 +74,10 @@ export const ServiceTopologyView: React.FC<ServiceTopologyViewProps> = ({
       case 'DEGRADED':
         return '#E9B35A'
       case 'DOWN':
+      case 'UNHEALTHY':
         return '#F05460'
+      case 'RECOVERING':
+        return '#38BDF8'
       case 'UNKNOWN':
       default:
         return '#899693'
@@ -183,6 +190,17 @@ export const ServiceTopologyView: React.FC<ServiceTopologyViewProps> = ({
                   orient="auto-start-reverse"
                 >
                   <path d="M 0 0 L 10 5 L 0 10 z" fill="#F05460" />
+                </marker>
+                <marker
+                  id="arrow-blue"
+                  viewBox="0 0 10 10"
+                  refX="6"
+                  refY="5"
+                  markerWidth="6"
+                  markerHeight="6"
+                  orient="auto-start-reverse"
+                >
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#38BDF8" />
                 </marker>
               </defs>
 

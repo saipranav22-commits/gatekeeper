@@ -3,6 +3,15 @@ import { HealthStatus, HealthResponse, RouteResilienceSummary } from '@/types/he
 import { healthService } from '@/services/healthService'
 import { resilienceService } from '@/services/resilienceService'
 import { useAuth } from './AuthContext'
+import { isDemoMode } from '@/config/appMode'
+import {
+  DemoHealthState,
+  getDemoHealthScenario,
+  setDemoHealthScenario,
+  resetDemoHealthScenario,
+} from '@/demo/data/demoResilienceData'
+
+export type { DemoHealthState }
 
 interface GatewayHealthContextValue {
   status: HealthStatus
@@ -13,6 +22,9 @@ interface GatewayHealthContextValue {
   pollingInterval: number
   setPollingInterval: (ms: number) => void
   refetch: () => Promise<void>
+  demoScenario: DemoHealthState
+  setDemoScenario: (scenario: DemoHealthState) => Promise<void>
+  resetDemoScenario: () => Promise<void>
 }
 
 const GatewayHealthContext = createContext<GatewayHealthContextValue | undefined>(undefined)
@@ -25,6 +37,9 @@ export const GatewayHealthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [lastChecked, setLastChecked] = useState<Date | null>(null)
   const [isChecking, setIsChecking] = useState<boolean>(false)
   const [pollingInterval, setPollingInterval] = useState<number>(30000) // 30 seconds default
+  const [demoScenario, setDemoScenarioState] = useState<DemoHealthState>(() => {
+    return isDemoMode() ? getDemoHealthScenario() : 'HEALTHY'
+  })
   const abortControllerRef = useRef<AbortController | null>(null)
 
   const checkHealth = useCallback(async () => {
@@ -41,9 +56,9 @@ export const GatewayHealthProvider: React.FC<{ children: React.ReactNode }> = ({
       const hData = await healthService.getHealth(controller.signal)
       setHealthData(hData)
 
-      // 2. Fetch authenticated route resilience if authenticated
+      // 2. Fetch authenticated route resilience if authenticated (or in demo mode)
       let rData: RouteResilienceSummary[] = []
-      if (isAuthenticated) {
+      if (isAuthenticated || isDemoMode()) {
         try {
           rData = await resilienceService.getRouteResilience(controller.signal)
           setResilienceData(rData)
@@ -57,15 +72,19 @@ export const GatewayHealthProvider: React.FC<{ children: React.ReactNode }> = ({
 
       // 3. Determine composite operational health status
       if (hData.status === 'UP') {
-        const hasTrippedBreaker = rData.some(
-          (r) => r.circuitBreakerState === 'OPEN' || r.circuitBreakerState === 'HALF_OPEN'
-        )
-        const hasHighFailureRate = rData.some((r) => r.failureRate > 20)
-
-        if (hasTrippedBreaker || hasHighFailureRate) {
-          setStatus('DEGRADED')
+        if (isDemoMode()) {
+          setStatus(getDemoHealthScenario())
         } else {
-          setStatus('HEALTHY')
+          const hasTrippedBreaker = rData.some(
+            (r) => r.circuitBreakerState === 'OPEN' || r.circuitBreakerState === 'HALF_OPEN'
+          )
+          const hasHighFailureRate = rData.some((r) => r.failureRate > 20)
+
+          if (hasTrippedBreaker || hasHighFailureRate) {
+            setStatus('DEGRADED')
+          } else {
+            setStatus('HEALTHY')
+          }
         }
       } else {
         setStatus('DEGRADED')
@@ -80,6 +99,23 @@ export const GatewayHealthProvider: React.FC<{ children: React.ReactNode }> = ({
       setIsChecking(false)
     }
   }, [isAuthenticated])
+
+  const setDemoScenario = useCallback(
+    async (scenario: DemoHealthState) => {
+      if (!isDemoMode()) return
+      setDemoHealthScenario(scenario)
+      setDemoScenarioState(scenario)
+      await checkHealth()
+    },
+    [checkHealth]
+  )
+
+  const resetDemoScenario = useCallback(async () => {
+    if (!isDemoMode()) return
+    resetDemoHealthScenario()
+    setDemoScenarioState('HEALTHY')
+    await checkHealth()
+  }, [checkHealth])
 
   // Periodic polling with pause on hidden tab
   useEffect(() => {
@@ -134,6 +170,9 @@ export const GatewayHealthProvider: React.FC<{ children: React.ReactNode }> = ({
         pollingInterval,
         setPollingInterval,
         refetch: checkHealth,
+        demoScenario,
+        setDemoScenario,
+        resetDemoScenario,
       }}
     >
       {children}

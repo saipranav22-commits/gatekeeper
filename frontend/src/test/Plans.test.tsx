@@ -71,6 +71,21 @@ describe('Subscription Plans & Quota Management Screen', () => {
     expect(screen.getByText(/~10\.0 req\/s/i)).toBeInTheDocument()
   })
 
+  it('renders promotional highlight badge for Enterprise tier inside card header', async () => {
+    render(
+      <QueryClientProvider client={queryClient}>
+        <Plans />
+      </QueryClientProvider>
+    )
+
+    await waitFor(() => {
+      const badge = screen.getByText('High-Throughput Tier')
+      expect(badge).toBeInTheDocument()
+      expect(badge).toHaveClass('text-emerald')
+      expect(badge).toHaveClass('uppercase')
+    })
+  })
+
   it('renders subscription comparison matrix table', async () => {
     render(
       <QueryClientProvider client={queryClient}>

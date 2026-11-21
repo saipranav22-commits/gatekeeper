@@ -10,6 +10,9 @@ useDefault = true
 
 [allowlist]
 description = "Permit synthetic mock secrets in test fixtures, docs, and example templates"
+regexes = [
+    '''gk_live_(?:acme_7f9a|acme_14c3|glo_98be|nov_54d1)'''
+]
 paths = [
     '''backend/src/test/''',
     '''frontend/src/test/''',
