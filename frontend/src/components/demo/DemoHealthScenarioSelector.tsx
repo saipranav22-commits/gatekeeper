@@ -111,7 +111,7 @@ export const DemoHealthScenarioSelector: React.FC = () => {
                 aria-checked={isSelected}
                 data-testid={`demo-scenario-${opt.key.toLowerCase()}`}
                 onClick={() => setDemoScenario(opt.key)}
-                className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-mono font-bold tracking-wider uppercase transition-all cursor-pointer border ${
+                className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-mono font-bold tracking-wider uppercase transition-all cursor-pointer border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald/60 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas ${
                   isSelected
                     ? `${opt.activeBgClass} ${opt.activeBorderClass} ${opt.activeTextClass} shadow-xs ring-1 ring-inset ${opt.activeBorderClass}`
                     : 'bg-surface-elevated/40 border-moss/30 text-titanium hover:text-silver-frost hover:border-moss/70'
@@ -129,7 +129,18 @@ export const DemoHealthScenarioSelector: React.FC = () => {
         </div>
 
         {/* Current Scenario Active Explanation Banner */}
-        <div className="mt-3 p-3 bg-surface-elevated/50 rounded-lg border border-moss-subtle flex items-start gap-2.5 text-xs">
+        <div
+          data-testid="demo-scenario-active-banner"
+          className={`mt-3 p-3 rounded-lg border flex items-start gap-2.5 text-xs transition-colors min-h-[64px] ${
+            demoScenario === 'UNHEALTHY'
+              ? 'bg-signal-red/10 border-signal-red/40'
+              : demoScenario === 'DEGRADED'
+              ? 'bg-warning-amber/10 border-warning-amber/40'
+              : demoScenario === 'RECOVERING'
+              ? 'bg-sky-500/10 border-sky-500/40'
+              : 'bg-surface-elevated/50 border-moss-subtle'
+          }`}
+        >
           <div className="mt-0.5 shrink-0">
             <span
               className={`inline-block w-2.5 h-2.5 rounded-full ${currentOption.dotClass}`}

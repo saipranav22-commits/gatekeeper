@@ -55,8 +55,9 @@ export const ServiceTopologyView: React.FC<ServiceTopologyViewProps> = ({
         return <Badge variant="success">HEALTHY</Badge>
       case 'DEGRADED':
         return <Badge variant="warning">DEGRADED</Badge>
-      case 'DOWN':
       case 'UNHEALTHY':
+        return <Badge variant="danger">UNHEALTHY</Badge>
+      case 'DOWN':
         return <Badge variant="danger">DOWN</Badge>
       case 'RECOVERING':
         return <Badge variant="recovering">RECOVERING</Badge>
