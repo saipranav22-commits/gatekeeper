@@ -535,6 +535,9 @@ export const chaosService = {
    * Returns empty array if backend is in production profile or returns 404/403.
    */
   async getLiveExperiments(signal?: AbortSignal): Promise<ChaosExperiment[]> {
+    if (isDemoMode()) {
+      return []
+    }
     try {
       const response = await apiClient.get<ChaosExperiment[]>('/api/v1/chaos/experiments', {
         signal,
@@ -554,6 +557,9 @@ export const chaosService = {
    * Fetches a specific live experiment by ID.
    */
   async getLiveExperiment(id: string, signal?: AbortSignal): Promise<ChaosExperiment | null> {
+    if (isDemoMode()) {
+      return null
+    }
     try {
       const response = await apiClient.get<ChaosExperiment>(`/api/v1/chaos/experiments/${encodeURIComponent(id)}`, {
         signal,
@@ -599,6 +605,9 @@ export const chaosService = {
    * Combines live backend experiments with verified historical test artifacts.
    */
   async getAllExperimentsCombined(signal?: AbortSignal): Promise<ChaosExperiment[]> {
+    if (isDemoMode()) {
+      return this.getHistoricalExperiments()
+    }
     const live = await this.getLiveExperiments(signal)
     if (live && live.length > 0) {
       // Merge live experiments at top, append historical benchmarks

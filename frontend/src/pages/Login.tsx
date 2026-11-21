@@ -43,9 +43,9 @@ export const Login: React.FC = () => {
     },
   })
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated (in live mode only)
   React.useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && !isDemoMode()) {
       const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/'
       navigate(from, { replace: true })
     }

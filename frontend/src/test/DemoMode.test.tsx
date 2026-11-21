@@ -339,4 +339,11 @@ describe('Gatekeeper Demo Mode Suite (DEMO-01 to DEMO-20)', () => {
     const normalized = resilienceService.getRouteResilience
     expect(typeof normalized).toBe('function')
   })
+
+  it('DEMO-21: Chaos service does not leak live network requests in demo mode', async () => {
+    setAppModeOverrideForTesting('demo')
+    const experiments = await chaosService.getAllExperimentsCombined()
+    expect(experiments.length).toBeGreaterThan(0)
+    expect(axiosGetSpy).not.toHaveBeenCalled()
+  })
 })

@@ -48,7 +48,7 @@ export const AppLayout: React.FC = () => {
           <div className="bg-surface-elevated/90 border-b border-moss/40 px-4 py-2 flex flex-wrap items-center justify-between text-xs font-mono text-titanium gap-2 shrink-0">
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 rounded bg-emerald/20 text-emerald font-semibold border border-emerald/30 uppercase tracking-wider text-[10px]">
-                Interactive Demo
+                [INTERACTIVE DEMO]
               </span>
               <span>Demonstration dataset & simulated policy engine. No live backend required.</span>
             </div>
