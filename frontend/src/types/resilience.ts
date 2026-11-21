@@ -42,7 +42,7 @@ export interface RouteResilienceDetail {
 
 export type DependencyType = 'GATEWAY' | 'UPSTREAM_HTTP' | 'DATABASE' | 'CACHE' | 'CLIENT'
 
-export type ServiceHealthStatus = 'HEALTHY' | 'DEGRADED' | 'DOWN' | 'UNKNOWN'
+export type ServiceHealthStatus = 'HEALTHY' | 'DEGRADED' | 'DOWN' | 'UNKNOWN' | 'RECOVERING'
 
 export interface ServiceTopologyNode {
   id: string

@@ -7,16 +7,17 @@ import {
   UsageEventDetailDto,
 } from '@/types/analytics'
 import {
-  DEMO_ANALYTICS_OVERVIEW,
   DEMO_CONSUMER_ANALYTICS,
   DEMO_TOP_CONSUMERS,
   DEMO_USAGE_EVENTS,
   generateDemoTimeSeries,
+  getDemoAnalyticsOverview,
 } from '../data/demoAnalyticsData'
+import { getDemoHealthScenario } from '../data/demoResilienceData'
 
 export const demoAnalyticsService = {
   async getOverview(_start?: string, _end?: string): Promise<AnalyticsOverviewDto> {
-    return DEMO_ANALYTICS_OVERVIEW
+    return getDemoAnalyticsOverview(getDemoHealthScenario())
   },
 
   async getTimeSeries(

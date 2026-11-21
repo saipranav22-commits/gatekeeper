@@ -2,9 +2,29 @@ import { RouteResilienceSummary } from '@/types/health'
 import { RouteResilienceDetail } from '@/types/resilience'
 import { ResetCircuitBreakerResponse } from '@/services/resilienceService'
 
-export type DemoResilienceScenario = 'HEALTHY' | 'ELEVATED_ERROR_RATE' | 'CIRCUIT_OPEN' | 'RECOVERY'
+export type DemoHealthState = 'HEALTHY' | 'DEGRADED' | 'UNHEALTHY' | 'RECOVERING'
+export type DemoResilienceScenario = DemoHealthState | 'ELEVATED_ERROR_RATE' | 'CIRCUIT_OPEN' | 'RECOVERY'
 
 let currentScenario: DemoResilienceScenario = 'HEALTHY'
+
+export const normalizeToHealthState = (scenario: DemoResilienceScenario): DemoHealthState => {
+  if (scenario === 'CIRCUIT_OPEN' || scenario === 'UNHEALTHY') return 'UNHEALTHY'
+  if (scenario === 'ELEVATED_ERROR_RATE' || scenario === 'DEGRADED') return 'DEGRADED'
+  if (scenario === 'RECOVERY' || scenario === 'RECOVERING') return 'RECOVERING'
+  return 'HEALTHY'
+}
+
+export const setDemoHealthScenario = (scenario: DemoResilienceScenario): void => {
+  currentScenario = scenario
+}
+
+export const getDemoHealthScenario = (): DemoHealthState => {
+  return normalizeToHealthState(currentScenario)
+}
+
+export const resetDemoHealthScenario = (): void => {
+  currentScenario = 'HEALTHY'
+}
 
 export const setDemoResilienceScenario = (scenario: DemoResilienceScenario): void => {
   currentScenario = scenario
@@ -16,6 +36,7 @@ export const getDemoResilienceScenario = (): DemoResilienceScenario => {
 
 export const getDemoRouteResilience = (): RouteResilienceSummary[] => {
   switch (currentScenario) {
+    case 'UNHEALTHY':
     case 'CIRCUIT_OPEN':
       return [
         {
@@ -50,6 +71,7 @@ export const getDemoRouteResilience = (): RouteResilienceSummary[] => {
         },
       ]
 
+    case 'DEGRADED':
     case 'ELEVATED_ERROR_RATE':
       return [
         {
@@ -84,11 +106,12 @@ export const getDemoRouteResilience = (): RouteResilienceSummary[] => {
         },
       ]
 
+    case 'RECOVERING':
     case 'RECOVERY':
       return [
         {
           routeId: 'orders-service-v1',
-          circuitBreakerState: 'CLOSED',
+          circuitBreakerState: 'HALF_OPEN',
           failureRate: 4.8,
           slowCallRate: 3.2,
           totalCalls: 512,
@@ -157,8 +180,9 @@ export const getDemoRouteResilience = (): RouteResilienceSummary[] => {
 
 export const getDemoRouteResilienceDetail = (routeId: string): RouteResilienceDetail => {
   const isOrders = routeId === 'orders-service-v1'
-  const isCircuitOpen = currentScenario === 'CIRCUIT_OPEN' && isOrders
-  const isHalfOpen = currentScenario === 'ELEVATED_ERROR_RATE' && isOrders
+  const isCircuitOpen = (currentScenario === 'UNHEALTHY' || (currentScenario as string) === 'CIRCUIT_OPEN') && isOrders
+  const isHalfOpen = (currentScenario === 'DEGRADED' || currentScenario === 'RECOVERING' || (currentScenario as string) === 'ELEVATED_ERROR_RATE' || (currentScenario as string) === 'RECOVERY') && isOrders
+  const isRecovering = (currentScenario === 'RECOVERING' || (currentScenario as string) === 'RECOVERY') && isOrders
 
   return {
     routeId,
@@ -171,12 +195,12 @@ export const getDemoRouteResilienceDetail = (routeId: string): RouteResilienceDe
       minimumNumberOfCalls: 10,
       waitDurationInOpenStateMs: 15000,
       permittedNumberOfCallsInHalfOpenState: 5,
-      totalCalls: isOrders ? (isCircuitOpen ? 1250 : 4210) : 3890,
-      successfulCalls: isOrders ? (isCircuitOpen ? 322 : 4206) : 3888,
-      failedCalls: isOrders ? (isCircuitOpen ? 928 : 4) : 2,
-      slowCalls: isOrders ? (isCircuitOpen ? 231 : 17) : 8,
-      failureRatePercent: isOrders ? (isCircuitOpen ? 74.2 : isHalfOpen ? 38.6 : 0.1) : 0.05,
-      slowCallRatePercent: isOrders ? (isCircuitOpen ? 18.5 : isHalfOpen ? 24.1 : 0.4) : 0.2,
+      totalCalls: isOrders ? (isCircuitOpen ? 1250 : isRecovering ? 512 : 4210) : 3890,
+      successfulCalls: isOrders ? (isCircuitOpen ? 322 : isRecovering ? 487 : 4206) : 3888,
+      failedCalls: isOrders ? (isCircuitOpen ? 928 : isRecovering ? 25 : 4) : 2,
+      slowCalls: isOrders ? (isCircuitOpen ? 231 : isRecovering ? 16 : 17) : 8,
+      failureRatePercent: isOrders ? (isCircuitOpen ? 74.2 : isRecovering ? 4.8 : isHalfOpen ? 38.6 : 0.1) : 0.05,
+      slowCallRatePercent: isOrders ? (isCircuitOpen ? 18.5 : isRecovering ? 3.2 : isHalfOpen ? 24.1 : 0.4) : 0.2,
       totalRejectedCalls: isOrders && isCircuitOpen ? 342 : 0,
     },
     bulkhead: {

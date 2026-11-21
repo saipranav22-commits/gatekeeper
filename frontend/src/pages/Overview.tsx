@@ -10,6 +10,8 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { formatNumber, formatPercentage, formatDate } from '@/lib/utils'
+import { isDemoMode } from '@/config/appMode'
+import { DemoHealthScenarioSelector } from '@/components/demo/DemoHealthScenarioSelector'
 import {
   Activity,
   CheckCircle2,
@@ -81,7 +83,7 @@ export const Overview: React.FC = () => {
     refetch: refetchOverview,
     isFetching: overviewFetching,
   } = useQuery({
-    queryKey: ['analytics', 'overview', dateRange.start, dateRange.end],
+    queryKey: ['analytics', 'overview', dateRange.start, dateRange.end, gatewayHealthStatus],
     queryFn: () => analyticsService.getOverview(dateRange.start, dateRange.end),
     refetchInterval: pollingInterval > 0 ? pollingInterval : false,
   })
@@ -144,18 +146,45 @@ export const Overview: React.FC = () => {
   const operationalInsights = React.useMemo(() => {
     const insights: Array<{
       id: string
-      type: 'healthy' | 'warning' | 'critical'
+      type: 'healthy' | 'warning' | 'critical' | 'info'
       title: string
       description: string
     }> = []
 
     if (!overview) return insights
 
-    // Check circuit breaker status
+    // Scenario-specific explanations when simulated in demo mode or under active incident
+    if (gatewayHealthStatus === 'UNHEALTHY') {
+      insights.push({
+        id: 'simulated-unhealthy',
+        type: 'critical',
+        title: 'Critical Service Incident — Orders Upstream Circuit Breaker OPEN',
+        description:
+          'Orders Service (orders-service-v1) is unavailable. Resilience4j circuit breaker has transitioned to OPEN, shedding downstream requests to protect system integrity.',
+      })
+    } else if (gatewayHealthStatus === 'DEGRADED') {
+      insights.push({
+        id: 'simulated-degraded',
+        type: 'warning',
+        title: 'Upstream Latency Warning — Orders Service Degradation',
+        description:
+          'Orders Service (orders-service-v1) experiencing elevated failure rate (38.6%) and slow response calls (24.1%). Bulkhead concurrency permits restricted.',
+      })
+    } else if (gatewayHealthStatus === 'RECOVERING') {
+      insights.push({
+        id: 'simulated-recovering',
+        type: 'info',
+        title: 'Upstream Recovery in Progress — Circuit Breaker HALF_OPEN Probing',
+        description:
+          'Orders Service connectivity restored. Circuit breaker in HALF_OPEN trial state, executing trial requests with 4.8% error rate before transitioning to CLOSED.',
+      })
+    }
+
+    // Check circuit breaker status if not already added above
     const trippedRoutes = (resilienceData || []).filter(
       (r) => r.circuitBreakerState === 'OPEN' || r.circuitBreakerState === 'HALF_OPEN'
     )
-    if (trippedRoutes.length > 0) {
+    if (trippedRoutes.length > 0 && gatewayHealthStatus === 'HEALTHY') {
       insights.push({
         id: 'circuit-tripped',
         type: 'critical',
@@ -176,8 +205,8 @@ export const Overview: React.FC = () => {
       })
     }
 
-    // Check 5xx error requests
-    if (overview.errorRequests > 0) {
+    // Check 5xx error requests (if healthy, to show background error rates)
+    if (overview.errorRequests > 0 && gatewayHealthStatus === 'HEALTHY') {
       insights.push({
         id: 'upstream-5xx',
         type: 'warning',
@@ -199,7 +228,7 @@ export const Overview: React.FC = () => {
     }
 
     return insights
-  }, [overview, resilienceData])
+  }, [overview, resilienceData, gatewayHealthStatus])
 
   // Calculate Success Rate %
   const successRate =
@@ -220,8 +249,10 @@ export const Overview: React.FC = () => {
                   ? 'success'
                   : gatewayHealthStatus === 'DEGRADED'
                   ? 'warning'
-                  : gatewayHealthStatus === 'OFFLINE'
+                  : gatewayHealthStatus === 'UNHEALTHY' || gatewayHealthStatus === 'OFFLINE'
                   ? 'danger'
+                  : gatewayHealthStatus === 'RECOVERING'
+                  ? 'recovering'
                   : 'default'
               }
             >
@@ -285,6 +316,11 @@ export const Overview: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* Recruiter Demo Health Scenario Selector */}
+      {isDemoMode() && (
+        <DemoHealthScenarioSelector />
+      )}
 
       {/* Disconnected / Error Warning Banner */}
       {overviewError && (

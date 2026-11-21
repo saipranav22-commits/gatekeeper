@@ -60,6 +60,9 @@ describe('Phase 9A.2: Resilience Contract Normalization & Routing Regressions', 
       pollingInterval: 30000,
       setPollingInterval: vi.fn(),
       refetch: vi.fn(),
+      demoScenario: 'HEALTHY',
+      setDemoScenario: vi.fn(),
+      resetDemoScenario: vi.fn(),
     })
     vi.mocked(healthService.getActuatorHealth).mockResolvedValue({
       status: 'UP',

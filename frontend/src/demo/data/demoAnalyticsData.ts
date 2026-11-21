@@ -5,6 +5,7 @@ import {
   TopConsumerDto,
   UsageEventDetailDto,
 } from '@/types/analytics'
+import { DemoHealthState } from './demoResilienceData'
 
 export const DEMO_ANALYTICS_OVERVIEW: AnalyticsOverviewDto = {
   totalRequests: 1482920,
@@ -20,6 +21,32 @@ export const DEMO_ANALYTICS_OVERVIEW: AnalyticsOverviewDto = {
   },
   windowStart: '2026-11-20T00:00:00Z',
   windowEnd: '2026-11-21T00:00:00Z',
+}
+
+export const getDemoAnalyticsOverview = (scenario: DemoHealthState = 'HEALTHY'): AnalyticsOverviewDto => {
+  switch (scenario) {
+    case 'UNHEALTHY':
+      return {
+        ...DEMO_ANALYTICS_OVERVIEW,
+        allowedRequests: 1112400,
+        errorRequests: 339180,
+      }
+    case 'DEGRADED':
+      return {
+        ...DEMO_ANALYTICS_OVERVIEW,
+        allowedRequests: 1395800,
+        errorRequests: 55780,
+      }
+    case 'RECOVERING':
+      return {
+        ...DEMO_ANALYTICS_OVERVIEW,
+        allowedRequests: 1435200,
+        errorRequests: 16380,
+      }
+    case 'HEALTHY':
+    default:
+      return DEMO_ANALYTICS_OVERVIEW
+  }
 }
 
 export const DEMO_TOP_CONSUMERS: TopConsumerDto[] = [

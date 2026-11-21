@@ -45,7 +45,11 @@ export const ResilienceWorkbenchView: React.FC<ResilienceWorkbenchViewProps> = (
       case 'CLOSED':
         return <Badge variant="success">CLOSED (NOMINAL)</Badge>
       case 'HALF_OPEN':
-        return <Badge variant="warning">HALF_OPEN (PROBING)</Badge>
+        return (activeSummary?.failureRate ?? 0) <= 10 ? (
+          <Badge variant="recovering">HALF_OPEN (RECOVERING)</Badge>
+        ) : (
+          <Badge variant="warning">HALF_OPEN (PROBING)</Badge>
+        )
       case 'OPEN':
         return <Badge variant="danger">OPEN (FAIL-FAST)</Badge>
       default:
@@ -88,7 +92,9 @@ export const ResilienceWorkbenchView: React.FC<ResilienceWorkbenchViewProps> = (
                   s.circuitBreakerState === 'CLOSED'
                     ? 'bg-emerald'
                     : s.circuitBreakerState === 'HALF_OPEN'
-                    ? 'bg-warning animate-pulse'
+                    ? (s.failureRate ?? 0) <= 10
+                      ? 'bg-sky-400 animate-pulse'
+                      : 'bg-warning animate-pulse'
                     : 'bg-signal-red animate-pulse'
                 }`}
               />

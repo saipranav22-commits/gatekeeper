@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/context/ToastContext'
@@ -16,6 +16,8 @@ import { PolicyActivationAuditDto } from '@/types/policy'
 import { ServiceTopologyView } from '@/components/reliability/ServiceTopologyView'
 import { ResilienceWorkbenchView } from '@/components/reliability/ResilienceWorkbenchView'
 import { OperationalTimelineView } from '@/components/reliability/OperationalTimelineView'
+import { isDemoMode } from '@/config/appMode'
+import { DemoHealthScenarioSelector } from '@/components/demo/DemoHealthScenarioSelector'
 import {
   Network,
   Zap,
@@ -29,7 +31,7 @@ export const ReliabilityWorkbench: React.FC = () => {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  const { status: gatewayStatus } = useGatewayHealth()
+  const { status: gatewayStatus, resetDemoScenario } = useGatewayHealth()
 
   // Tab State
   const tabParam = searchParams.get('tab')
@@ -143,6 +145,15 @@ export const ReliabilityWorkbench: React.FC = () => {
     }
   }, [fetchTelemetry])
 
+  // Synchronize telemetry with scenario changes immediately (avoid duplicate fetch on initial mount)
+  const prevGatewayStatusRef = useRef(gatewayStatus)
+  useEffect(() => {
+    if (prevGatewayStatusRef.current !== gatewayStatus) {
+      prevGatewayStatusRef.current = gatewayStatus
+      fetchTelemetry(true)
+    }
+  }, [gatewayStatus, fetchTelemetry])
+
   // Select route and fetch its specific detail
   const handleSelectRoute = async (routeId: string) => {
     setSelectedRouteId(routeId)
@@ -164,7 +175,11 @@ export const ReliabilityWorkbench: React.FC = () => {
         'Circuit Breaker Reset to CLOSED',
         `Route ${result.routeId} successfully reset by ${result.resetBy}. Sliding window purged.`
       )
-      await fetchTelemetry(true)
+      if (isDemoMode()) {
+        await resetDemoScenario()
+      } else {
+        await fetchTelemetry(true)
+      }
     } catch (err: unknown) {
       const errorMessage =
         err && typeof err === 'object' && 'response' in err
@@ -244,6 +259,11 @@ export const ReliabilityWorkbench: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Recruiter Demo Health Scenario Selector */}
+      {isDemoMode() && (
+        <DemoHealthScenarioSelector />
+      )}
 
       {/* Navigation Sub-Tabs */}
       <div className="flex flex-wrap items-center gap-2 bg-surface p-1 rounded-xl border border-moss/30 max-w-fit">

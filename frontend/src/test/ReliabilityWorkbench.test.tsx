@@ -136,6 +136,9 @@ describe('Reliability Workbench & Service Topology Screen', () => {
       pollingInterval: 30000,
       setPollingInterval: vi.fn(),
       refetch: vi.fn(),
+      demoScenario: 'HEALTHY',
+      setDemoScenario: vi.fn(),
+      resetDemoScenario: vi.fn(),
     })
 
     vi.mocked(resilienceService.getRouteResilience).mockResolvedValue(mockSummaries)
