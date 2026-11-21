@@ -7,6 +7,13 @@ import {
 import { RouteResilienceSummary } from '@/types/health'
 import { ActuatorHealthResponse } from './healthService'
 
+function formatPercent(val: unknown): string {
+  if (typeof val === 'number' && Number.isFinite(val)) {
+    return val.toFixed(1)
+  }
+  return '0.0'
+}
+
 export const topologyService = {
   /**
    * Constructs the Configured Service Topology based on actual Spring Boot routes
@@ -33,18 +40,23 @@ export const topologyService = {
     let ordersStatus: 'HEALTHY' | 'DEGRADED' | 'DOWN' | 'UNKNOWN' = 'UNKNOWN'
     let ordersStatusReason = 'No telemetry observed yet for orders-service-v1'
     if (ordersResilience) {
+      const fRate = typeof ordersResilience.failureRate === 'number' && Number.isFinite(ordersResilience.failureRate) ? ordersResilience.failureRate : 0
+      const sRate = typeof ordersResilience.slowCallRate === 'number' && Number.isFinite(ordersResilience.slowCallRate) ? ordersResilience.slowCallRate : 0
+      const rejCalls = ordersResilience.rejectedCalls ?? 0
+      const totCalls = ordersResilience.totalCalls ?? 0
+
       if (ordersResilience.circuitBreakerState === 'OPEN') {
         ordersStatus = 'DOWN'
-        ordersStatusReason = `Circuit Breaker is OPEN (${ordersResilience.failureRate.toFixed(1)}% failure rate, ${ordersResilience.rejectedCalls} rejected)`
+        ordersStatusReason = `Circuit Breaker is OPEN (${formatPercent(fRate)}% failure rate, ${rejCalls} rejected)`
       } else if (ordersResilience.circuitBreakerState === 'HALF_OPEN') {
         ordersStatus = 'DEGRADED'
         ordersStatusReason = 'Circuit Breaker is HALF_OPEN (probing upstream recovery)'
-      } else if (ordersResilience.failureRate > 20 || ordersResilience.slowCallRate > 30) {
+      } else if (fRate > 20 || sRate > 30) {
         ordersStatus = 'DEGRADED'
-        ordersStatusReason = `Elevated error/latency rate: ${ordersResilience.failureRate.toFixed(1)}% fail, ${ordersResilience.slowCallRate.toFixed(1)}% slow`
+        ordersStatusReason = `Elevated error/latency rate: ${formatPercent(fRate)}% fail, ${formatPercent(sRate)}% slow`
       } else {
         ordersStatus = 'HEALTHY'
-        ordersStatusReason = `Circuit Breaker CLOSED (${ordersResilience.totalCalls} calls handled, ${ordersResilience.failureRate.toFixed(1)}% error)`
+        ordersStatusReason = `Circuit Breaker CLOSED (${totCalls} calls handled, ${formatPercent(fRate)}% error)`
       }
     }
 
@@ -52,15 +64,18 @@ export const topologyService = {
     let inventoryStatus: 'HEALTHY' | 'DEGRADED' | 'DOWN' | 'UNKNOWN' = 'UNKNOWN'
     let inventoryStatusReason = 'No telemetry observed yet for inventory-service-v1'
     if (inventoryResilience) {
+      const fRate = typeof inventoryResilience.failureRate === 'number' && Number.isFinite(inventoryResilience.failureRate) ? inventoryResilience.failureRate : 0
+      const totCalls = inventoryResilience.totalCalls ?? 0
+
       if (inventoryResilience.circuitBreakerState === 'OPEN') {
         inventoryStatus = 'DOWN'
-        inventoryStatusReason = `Circuit Breaker is OPEN (${inventoryResilience.failureRate.toFixed(1)}% failure rate)`
+        inventoryStatusReason = `Circuit Breaker is OPEN (${formatPercent(fRate)}% failure rate)`
       } else if (inventoryResilience.circuitBreakerState === 'HALF_OPEN') {
         inventoryStatus = 'DEGRADED'
         inventoryStatusReason = 'Circuit Breaker is HALF_OPEN (probing upstream recovery)'
       } else {
         inventoryStatus = 'HEALTHY'
-        inventoryStatusReason = `Circuit Breaker CLOSED (${inventoryResilience.totalCalls} calls handled)`
+        inventoryStatusReason = `Circuit Breaker CLOSED (${totCalls} calls handled)`
       }
     }
 

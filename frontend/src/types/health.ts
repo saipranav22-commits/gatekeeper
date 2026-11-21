@@ -21,4 +21,10 @@ export interface RouteResilienceSummary {
   bulkheadInFlightCalls: number
   bulkheadRejectedCalls: number
   retryMaxAttempts: number
+
+  // Optional backend Spring Boot DTO raw field aliases
+  circuitState?: string
+  failureRatePercent?: number
+  slowCallRatePercent?: number
+  circuitRejectedCalls?: number
 }
