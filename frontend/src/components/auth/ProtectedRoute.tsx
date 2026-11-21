@@ -27,12 +27,12 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requir
   // Role authorization check
   if (requiredRoles && !hasRole(requiredRoles)) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] p-8 text-center">
-        <div className="p-4 bg-rose-50 border border-rose-200 rounded-full mb-4">
-          <ShieldX className="w-10 h-10 text-rose-600" />
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-8 text-center bg-canvas">
+        <div className="p-4 bg-signal-red/10 border border-signal-red/30 rounded-full mb-4 text-signal-red">
+          <ShieldX className="w-10 h-10 text-signal-red" />
         </div>
-        <h2 className="text-xl font-bold text-slate-900 mb-2">Access Restricted</h2>
-        <p className="text-sm text-slate-500 max-w-md mb-6">
+        <h2 className="text-xl font-bold font-mono text-silver-frost mb-2">Access Restricted</h2>
+        <p className="text-sm font-mono text-titanium max-w-md mb-6">
           Your role ({admin?.role}) does not have permission to access this administrative area.
         </p>
         <Button variant="outline" onClick={() => window.history.back()}>

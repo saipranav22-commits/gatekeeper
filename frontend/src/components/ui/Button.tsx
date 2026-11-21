@@ -15,13 +15,18 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={disabled || isLoading}
         className={cn(
-          'inline-flex items-center justify-center font-medium rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:ring-offset-1 disabled:opacity-50 disabled:pointer-events-none select-none',
+          'inline-flex items-center justify-center font-medium rounded-md transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-emerald/40 focus:ring-offset-1 focus:ring-offset-canvas disabled:opacity-50 disabled:pointer-events-none select-none cursor-pointer',
           // Variants
-          variant === 'primary' && 'bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800 shadow-sm',
-          variant === 'secondary' && 'bg-slate-100 text-slate-800 hover:bg-slate-200 active:bg-slate-300',
-          variant === 'outline' && 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 active:bg-slate-100 shadow-xs',
-          variant === 'danger' && 'bg-rose-600 text-white hover:bg-rose-700 active:bg-rose-800 shadow-sm',
-          variant === 'ghost' && 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+          variant === 'primary' &&
+            'bg-emerald text-canvas font-semibold hover:bg-emerald-hover active:bg-emerald-active shadow-emerald-sm',
+          variant === 'secondary' &&
+            'bg-surface-elevated text-silver-frost border border-moss-subtle hover:bg-surface-hover hover:border-moss',
+          variant === 'outline' &&
+            'border border-moss bg-surface/60 text-silver-frost hover:bg-surface-elevated hover:border-emerald/50 shadow-xs',
+          variant === 'danger' &&
+            'bg-signal-red text-canvas font-semibold hover:bg-rose-600 active:bg-rose-700 shadow-sm focus:ring-signal-red/40',
+          variant === 'ghost' &&
+            'text-titanium hover:bg-surface-hover hover:text-silver-frost',
           // Sizes
           size === 'sm' && 'text-xs px-2.5 py-1.5 gap-1.5',
           size === 'md' && 'text-sm px-4 py-2 gap-2',

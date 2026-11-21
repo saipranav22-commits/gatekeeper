@@ -21,7 +21,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
     return (
       <div className="w-full flex flex-col gap-1.5 text-left">
         {label && (
-          <label htmlFor={selectId} className="text-xs font-semibold uppercase tracking-wider text-slate-700">
+          <label htmlFor={selectId} className="text-xs font-semibold uppercase tracking-wider text-titanium">
             {label}
           </label>
         )}
@@ -29,10 +29,10 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           id={selectId}
           ref={ref}
           className={cn(
-            'w-full px-3.5 py-2 text-sm bg-white border rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 text-slate-900',
+            'w-full px-3.5 py-2 text-sm bg-input border rounded-md transition-all focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-offset-canvas text-silver-frost',
             error
-              ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-400/40'
-              : 'border-slate-300 focus:border-primary-500 focus:ring-primary-500/30',
+              ? 'border-signal-red/60 focus:border-signal-red focus:ring-signal-red/40'
+              : 'border-moss/60 focus:border-emerald focus:ring-emerald/40',
             className
           )}
           {...props}
@@ -40,13 +40,13 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
           {children
             ? children
             : options.map((opt) => (
-                <option key={opt.value} value={opt.value} disabled={opt.disabled}>
+                <option key={opt.value} value={opt.value} disabled={opt.disabled} className="bg-surface text-silver-frost">
                   {opt.label}
                 </option>
               ))}
         </select>
-        {error && <p className="text-xs text-rose-600 font-medium">{error}</p>}
-        {!error && helperText && <p className="text-xs text-slate-500">{helperText}</p>}
+        {error && <p className="text-xs text-signal-red font-medium">{error}</p>}
+        {!error && helperText && <p className="text-xs text-titanium">{helperText}</p>}
       </div>
     )
   }
