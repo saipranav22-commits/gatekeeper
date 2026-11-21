@@ -13,6 +13,7 @@ description = "Permit synthetic mock secrets in test fixtures, docs, and example
 paths = [
     '''backend/src/test/''',
     '''frontend/src/test/''',
+    '''frontend/src/demo/''',
     '''services/orders-service/src/test/''',
     '''services/inventory-service/src/test/''',
     '''\.env\.example$''',

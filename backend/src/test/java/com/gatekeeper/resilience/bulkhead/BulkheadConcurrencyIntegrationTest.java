@@ -107,6 +107,7 @@ class BulkheadConcurrencyIntegrationTest {
 
         CountDownLatch slowCallStartLatch = new CountDownLatch(capacity);
         CountDownLatch releaseSlowCallsLatch = new CountDownLatch(1);
+        CountDownLatch rejectedCallsLatch = new CountDownLatch(totalOrdersRequests - capacity);
         CountDownLatch allDoneLatch = new CountDownLatch(totalOrdersRequests);
 
         AtomicInteger inFlightOrdersPeak = new AtomicInteger(0);
@@ -145,6 +146,7 @@ class BulkheadConcurrencyIntegrationTest {
                     resilienceEngine.execute(req, resp, ordersRoute, "orders");
                     if (resp.getStatus() == 503) {
                         ordersRejected.incrementAndGet();
+                        rejectedCallsLatch.countDown();
                     }
                 } catch (IOException e) {
                     throw new RuntimeException(e);
@@ -173,6 +175,9 @@ class BulkheadConcurrencyIntegrationTest {
         assertThat(invResp.getStatus()).isEqualTo(200);
         RouteBulkhead invBulkhead = resilienceEngine.getBulkhead("inventory-service-v1");
         assertThat(invBulkhead.getAvailablePermits()).isEqualTo(capacity); // Inventory permits completely intact!
+
+        // Ensure all 20 excess requests have been evaluated and rejected by the saturated bulkhead before releasing permits
+        assertThat(rejectedCallsLatch.await(10, TimeUnit.SECONDS)).isTrue();
 
         // Now release the held orders requests
         releaseSlowCallsLatch.countDown();
