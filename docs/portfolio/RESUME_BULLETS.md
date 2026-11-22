@@ -8,6 +8,7 @@ Tailor your resume with these action-oriented, evidence-based bullet points cate
 
 **Gatekeeper — Enterprise API Gateway & Control Plane**  
 Java 21 | Spring Boot 3 | React 19 | TypeScript | Redis | PostgreSQL | Docker
+- **Live Demo:** https://gatekeeper-ayh.pages.dev  
 - **GitHub:** https://github.com/saipranav22-commits/gatekeeper  
 - **Video Demo:** https://youtu.be/c29oX3FUKVc  
 

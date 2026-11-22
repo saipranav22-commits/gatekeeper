@@ -245,7 +245,7 @@ export const ResilienceWorkbenchView: React.FC<ResilienceWorkbenchViewProps> = (
                       Route Bulkhead Semaphore
                     </h3>
                     <p className="text-[11px] font-mono text-titanium">
-                      Thread pool & in-flight connection isolation
+                      Thread pool & in-flight connection isolation (Configurable route limit; demo profile: 50 permits)
                     </p>
                   </div>
                 </div>

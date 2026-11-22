@@ -32,6 +32,7 @@ Built a 9-dashboard operational cockpit in React 19 & TypeScript with a custom d
 - Complete end-to-end documentation including REST API specs, architecture blueprints, and a 22-question deep technical interview guide!
 
 💻 **Explore the Codebase & Live Recruiter Demo:**
+- **Live Interactive Demo:** https://gatekeeper-ayh.pages.dev
 - **GitHub Repository:** https://github.com/saipranav22-commits/gatekeeper
 - **YouTube 4-Minute Video Demo:** https://youtu.be/c29oX3FUKVc
 

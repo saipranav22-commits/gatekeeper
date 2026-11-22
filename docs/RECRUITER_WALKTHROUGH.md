@@ -26,8 +26,11 @@ Most portfolio projects are simple CRUD applications or tutorials. **Gatekeeper 
 
 ## 2. Five-Minute Interactive Evaluation Tour
 
+> 🌐 **Evaluate Live Online (Recommended — Zero Setup)**  
+> Open **[https://gatekeeper-ayh.pages.dev](https://gatekeeper-ayh.pages.dev)** directly in your browser. Pre-filled credentials allow instant one-click login.
+
 > 📹 **Watch the Video Walkthrough First?**  
-> If you prefer a narrated 4-minute overview before running the tour locally:  
+> If you prefer a narrated 4-minute overview before running the tour:  
 > [▶ **Watch Gatekeeper Recruiter Demo on YouTube (https://youtu.be/c29oX3FUKVc)**](https://youtu.be/c29oX3FUKVc)
 
 ### Step 1: Launch the Demo (60 Seconds)
