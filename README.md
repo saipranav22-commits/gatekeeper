@@ -2,7 +2,7 @@
 
 [![Java 21](https://img.shields.io/badge/Java-21%20LTS-007396?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.x-6DB33F?logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
-[![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)](https://redis.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
@@ -10,12 +10,25 @@
 [![Security](https://img.shields.io/badge/Security-Gitleaks%20Clean-blue)](docs/SECURITY.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Gatekeeper is an industrial-grade, multi-tenant API Gateway and Intelligent Traffic Control Plane engineered from first principles in **Java 21 (Spring Boot 3)** and **TypeScript (React 18)**. It acts as an intelligent, high-throughput proxy between public ingress and downstream microservices, enforcing atomic token-bucket rate limiting, cascading failure protection, and AST-driven traffic governance.
+Gatekeeper is an industrial-grade, multi-tenant API Gateway and Intelligent Traffic Control Plane engineered from first principles in **Java 21 (Spring Boot 3)** and **TypeScript (React 19)**. It acts as an intelligent, high-throughput proxy between public ingress and downstream microservices, enforcing atomic token-bucket rate limiting, cascading failure protection, and declarative policy-driven traffic governance.
+
+---
+
+## 🎥 Watch Gatekeeper in Action
+
+[![Gatekeeper 4-Minute Project Demo](https://i.ytimg.com/vi/c29oX3FUKVc/hqdefault.jpg)](https://youtu.be/c29oX3FUKVc)
+
+[▶ **Watch the 4-Minute Project Demo**](https://youtu.be/c29oX3FUKVc)
+
+A narrated walkthrough of Gatekeeper's API gateway control plane, traffic analytics, API security, policy evaluation, circuit breakers, interactive health scenarios and system architecture.
+
+*The video demonstrates a standalone frontend simulation. The repository contains the actual Java/Spring Boot backend and associated microservices.*
 
 ---
 
 ## ⚡ Quick Navigation
 
+- 🎥 **[4-Minute Video Walkthrough](https://youtu.be/c29oX3FUKVc)**: Narrated demonstration of the control plane, traffic analytics, and fault isolation.
 - 🚀 **[60-Second Recruiter Demo](docs/DEMO_GUIDE.md)**: Explore the entire control plane locally with zero cloud or backend setup.
 - 📋 **[Recruiter & Hiring Manager Evaluation Guide](docs/RECRUITER_WALKTHROUGH.md)**: 5-minute technical evaluation walkthrough.
 - 🏛️ **[System Architecture Blueprint](docs/ARCHITECTURE.md)**: Deep dive into distributed algorithms, Mermaid diagrams, and data flows.
@@ -32,17 +45,17 @@ Gatekeeper is an industrial-grade, multi-tenant API Gateway and Intelligent Traf
 flowchart TD
     subgraph Clients["Ingress Layer"]
         Apps["Client Applications\n(X-API-Key: gk_live_...)"]
-        Browser["Admin Control Plane\n(React 18 / Obsidian Titanium)"]
+        Browser["Admin Control Plane\n(React 19 / Obsidian Titanium)"]
     end
 
     subgraph Gateway["Gatekeeper Edge Gateway (Port 8080)"]
         Cors["Security & CORS Filter"]
         Auth["Authentication Filter\n(JWT & API-Key Hash Check)"]
         Limiter["Atomic Rate Limiter\n(Redis Lua Token Bucket)"]
-        Policy["Policy Studio Engine\n(AST Rule Evaluation)"]
-        Resilience["Resilience4j Engine\n(Circuit Breakers & Bulkheads)"]
+        Policy["Policy Studio Engine\n(Declarative Rule Evaluation)"]
+        Resilience["Resilience Engine\n(Circuit Breakers & Bulkheads)"]
         Proxy["Dynamic Reverse Proxy\n(Spring Routing)"]
-        Telemetry["Async Event Pipeline\n(Micro-Batch Publisher)"]
+        Telemetry["Async Event Pipeline\n(Redis Streams & Micro-Batching)"]
     end
 
     subgraph State["State & Persistence Layer"]
@@ -79,18 +92,18 @@ flowchart TD
 
 ### 1. Atomic Distributed Rate Limiting (Redis Lua)
 - **Zero Race Conditions**: Executes an atomic Redis Lua script (`rate_limiter.lua`) calculating fractional token refills on-the-fly.
-- **Sub-2ms Evaluation**: Eliminates distributed locks and multi-step roundtrips under heavy concurrent load.
+- **Atomic Concurrency Control**: Eliminates distributed locks and multi-step database roundtrips under concurrent traffic.
 - **Multi-Tenant Quotas**: Enforces dynamic tier limits (`Starter`, `Professional`, `Enterprise`) with burst headroom.
 
-### 2. Cascading Failure Protection & Fault Isolation (Resilience4j)
-- **Sliding-Window Circuit Breakers**: Automatically trips to `OPEN` when upstream failure rates exceed 50%, short-circuiting calls with graceful fallbacks.
-- **Semaphore Bulkheads**: Dedicates 50 concurrent permits per downstream route, guaranteeing an outage in Orders Service never degrades Inventory Service.
-- **Automated Healing**: Transitions through `HALF-OPEN` probe states with automatic self-recovery.
+### 2. Cascading Failure Protection & Fault Isolation
+- **Sliding-Window Circuit Breakers**: Automatically trips to `OPEN` when upstream failure rates exceed configured thresholds (default: 50%), short-circuiting calls with graceful fallbacks.
+- **Semaphore Bulkheads**: Isolates concurrent execution permits per downstream route (configurable, default: 10 permits), guaranteeing an outage in Orders Service never starves or degrades Inventory Service.
+- **Automated Healing**: Transitions through `HALF-OPEN` probe states with automatic self-recovery once downstream services stabilize.
 
 ### 3. Explainable Policy Studio & Governance Engine
-- **AST Rule Compiler**: Evaluates request IP, CIDR blocks, geographic headers, and payload metadata against versioned rule trees.
+- **Declarative Rule Engine**: Evaluates request IP, CIDR blocks, route paths, headers, and consumer plans against versioned rule definitions.
 - **Dry-Run Simulation**: Enables operators to simulate incoming requests and inspect an explainable decision trace before production activation.
-- **Immutable History**: Version-controlled policies with instant one-click rollback.
+- **Immutable History**: Version-controlled policies with instant one-click rollback and audit logging.
 
 ### 4. Zero-Trust API Key Lifecycle
 - **Cryptographic Security**: Generates keys with 256 bits of CSPRNG entropy.
@@ -98,8 +111,8 @@ flowchart TD
 - **Single-Reveal UX**: Plaintext secrets are revealed strictly once upon generation via `OneTimeSecretModal`.
 
 ### 5. High-Throughput Asynchronous Analytics Ingestion
-- **Non-Blocking Critical Path**: Proxy responses dispatch to clients immediately; telemetry events are enqueued asynchronously.
-- **Micro-Batch DB Writes**: Flushes batches of up to 1,000 events or 500ms windows, slashing database IOPS by over 95%.
+- **Non-Blocking Critical Path**: Proxy responses dispatch to clients immediately; telemetry events are enqueued asynchronously via Redis Streams.
+- **Micro-Batched Persistence**: Consumer groups read event streams and flush micro-batches to PostgreSQL using JDBC batching, eliminating per-request database write overhead.
 - **Dead-Letter Safety**: Transient database failures route to a dead-letter queue (DLQ) with automated backoff retries.
 
 ---
@@ -253,7 +266,7 @@ erDiagram
 ```text
 Gatekeeper/
 ├── backend/                  # Gatekeeper Core Gateway (Java 21, Spring Boot 3)
-├── frontend/                 # Admin Control Plane (React 18, TypeScript, Tailwind)
+├── frontend/                 # Admin Control Plane (React 19, TypeScript, Tailwind)
 ├── services/                 # Downstream Microservices (Orders & Inventory)
 ├── docs/                     # Architecture, API specs, testing, and portfolio docs
 │   ├── api/                  # Complete REST API Specification

@@ -12,19 +12,23 @@ Most portfolio projects are simple CRUD applications or tutorials. **Gatekeeper 
 1. **Atomic Distributed Rate Limiting**:
    Implemented via custom **Redis Lua scripts** (`rate_limiter.lua`) providing zero-race-condition token-bucket rate limiting capable of handling tens of thousands of requests per second.
 2. **Cascading Failure Protection & Fault Isolation**:
-   Integrated with **Resilience4j**, combining sliding-window Circuit Breakers, Semaphore Bulkheads, and automated recovery loops to guarantee downstream outages never take down the gateway.
+   Combines sliding-window Circuit Breakers, per-route Semaphore Bulkheads, and automated recovery loops to guarantee downstream outages never take down the gateway.
 3. **Explainable Policy Governance Engine**:
-   Features an Abstract Syntax Tree (AST) policy engine capable of dry-run evaluation, shadow execution, and instant rollback for traffic governance rules.
+   Features a declarative policy engine capable of dry-run evaluation, shadow execution, explainable decision traces, and instant rollback for traffic governance rules.
 4. **Zero-Trust Secret Lifecycle**:
    API keys are cryptographically generated (256-bit entropy via CSPRNG) and stored as irreversible SHA-256 hashes with single-reveal plaintext UI modals.
 5. **Obsidian Titanium Design System**:
-   Modern, responsive React 18 / TypeScript frontend styled with a bespoke dark theme, dynamic incident severity hierarchy, and keyboard-driven command palette (`Ctrl + K`).
+   Modern, responsive React 19 / TypeScript frontend styled with a bespoke dark theme, dynamic incident severity hierarchy, and keyboard-driven command palette (`Ctrl + K`).
 6. **Zero-Backend Recruiter Demonstration**:
    A complete standalone demo mode running locally with zero cloud or database dependencies, allowing immediate hands-on exploration.
 
 ---
 
 ## 2. Five-Minute Interactive Evaluation Tour
+
+> 📹 **Watch the Video Walkthrough First?**  
+> If you prefer a narrated 4-minute overview before running the tour locally:  
+> [▶ **Watch Gatekeeper Recruiter Demo on YouTube (https://youtu.be/c29oX3FUKVc)**](https://youtu.be/c29oX3FUKVc)
 
 ### Step 1: Launch the Demo (60 Seconds)
 ```bash

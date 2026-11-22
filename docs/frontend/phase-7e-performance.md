@@ -15,7 +15,7 @@ Running `npm --prefix frontend run build` yields an optimized, compressed produc
 | :--- | :--- | :--- | :--- |
 | `index.html` | 0.70 kB | 0.36 kB | Single-page HTML shell with preload links |
 | `index-BMmD1e0L.css` | 29.03 kB | **6.52 kB** | Consolidated Tailwind CSS & Obsidian Titanium tokens |
-| `index-D0kMVY3f.js` | 313.96 kB | **98.22 kB** | React 18, React DOM, React Router 6 runtime core |
+| `index-D0kMVY3f.js` | 313.96 kB | **98.22 kB** | React 19, React DOM, React Router 6 runtime core |
 | `AreaChart-CZfn9FU4.js` | 394.78 kB | **112.74 kB** | Recharts telemetry visualization library (lazy-loaded) |
 | `schemas-BOlzhDSO.js` | 117.09 kB | **35.74 kB** | Zod validation schemas and DTO models |
 | `apiClient-Dqg8KsyO.js` | 58.89 kB | **21.97 kB** | Axios HTTP client, interceptors, error normalizers |

@@ -44,10 +44,10 @@ In Spring Web / Gateway architectures, thread pool bulkheads create dedicated th
 - Thread starvation risk when thread pools are misconfigured.
 - Loss of `ThreadLocal` context (such as Spring Security context, MDC logging, and trace IDs) without complex context propagators.
 
-Instead, Gatekeeper utilizes **Semaphore Bulkheads** (`Resilience4j Bulkhead`):
-- Each route has a maximum permit allowance (e.g., 50 concurrent permits for Orders Service).
-- Requests execute on the calling thread, simply acquiring a permit before dispatching the HTTP call and releasing it in a `finally` block upon completion.
-- If all 50 permits are in use, subsequent requests fail immediately with `BulkheadFullException` (HTTP 429/503), protecting the gateway's core thread pool from being consumed by a hung upstream dependency, with virtually zero memory or CPU overhead.
+Instead, Gatekeeper utilizes **Semaphore Bulkheads** (`RouteBulkhead` with Java `Semaphore`):
+- Each route has a configurable maximum permit allowance (default: 10 concurrent permits per upstream route).
+- Requests execute on the calling thread, acquiring a permit before dispatching the HTTP call and releasing it in a `finally` block upon completion.
+- If all permits are in use, subsequent requests fail immediately with `BulkheadFullException` (HTTP 429/503), protecting the gateway's core thread pool from being consumed by a hung upstream dependency, with virtually zero memory or CPU overhead.
 
 ---
 
@@ -98,10 +98,10 @@ When an upstream service recovers and a circuit breaker moves from `OPEN` to `HA
 ### Q9: How does Gatekeeper ingest millions of usage analytics events without degrading proxy request latency?
 **Answer:**
 Gatekeeper implements an **Asynchronous Micro-Batch Ingestion Pipeline**:
-- The gateway proxy handler publishes usage events to an in-memory queue / ring buffer (`LMAX Disruptor` or bounded `ConcurrentLinkedQueue`) in a non-blocking fashion.
+- The gateway proxy handler publishes usage events to a **Redis Stream** (`UsageEventPublisher`) in a non-blocking fashion.
 - The HTTP response thread dispatches to the client immediately without waiting for database operations.
-- A background worker (`UsageEventBatchConsumer`) drains the buffer in micro-batches (up to 1,000 events or every 500ms) and executes a single bulk JDBC batch insert (`COPY` or multi-value `INSERT`) into PostgreSQL.
-- This reduces database IOPS and round-trips by over 95% while keeping proxy path latency strictly under 2ms.
+- A background worker (`UsageEventBatchConsumer`) consumes stream events via consumer groups (`XREADGROUP`, `XACK`) in micro-batches and executes bulk JDBC `batchUpdate` writes into PostgreSQL.
+- This decouples database operations from the critical proxy path and handles ingestion spikes resiliently with Dead-Letter Queue (DLQ) retry mechanisms.
 
 ---
 

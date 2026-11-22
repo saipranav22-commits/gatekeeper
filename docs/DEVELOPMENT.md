@@ -23,7 +23,7 @@ Gatekeeper/
 │   │   ├── routing/          # Reverse proxy controller & header normalization
 │   │   └── security/         # Admin JWT auth, BCrypt/Argon2 hashing, login limiter
 │   └── pom.xml
-├── frontend/                 # Admin Control Plane (React 18, TypeScript, Vite)
+├── frontend/                 # Admin Control Plane (React 19, TypeScript, Vite)
 │   ├── src/
 │   │   ├── components/       # UI components, layout, and reliability workbench
 │   │   ├── config/           # App mode toggle (live vs standalone demo)
