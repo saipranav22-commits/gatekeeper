@@ -68,6 +68,8 @@ gatekeeper:
       max-attempts: ${GATEKEEPER_LOGIN_MAX_ATTEMPTS:5}
       lockout-duration-seconds: ${GATEKEEPER_LOGIN_LOCKOUT_SECONDS:900}
       fail-closed-on-outage: true
+    cors:
+      allowed-origins: ${GATEKEEPER_CORS_ALLOWED_ORIGINS:https://gatekeeper-ayh.pages.dev,http://localhost:5173,http://localhost:3000}
 
   # Resilient Gateway Routing with SSRF-safe container upstream targets
   routing:

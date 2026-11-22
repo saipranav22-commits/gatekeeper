@@ -53,6 +53,7 @@ A narrated walkthrough of Gatekeeper's API gateway control plane, traffic analyt
 - 🛡️ **[Security Architecture](docs/SECURITY.md)**: Zero-trust credentials, CSPRNG key generation, and threat mitigations.
 - 💼 **[Portfolio & Interview Package](docs/portfolio/INTERVIEW_QA.md)**: 22 technical interview Q&As and resume bullets.
 - 🌐 **[Cloudflare Pages ₹0 Deployment Guide](docs/deployment/CLOUDFLARE_PAGES.md)**: Zero-cost recruiter demo cloud deployment walkthrough.
+- ☕ **[Production Backend Cloud Runbook](docs/deployment/BACKEND_CLOUD_DEPLOYMENT.md)**: Zero-cost Oracle Cloud ARM64 and Docker deployment architecture.
 
 ---
 
