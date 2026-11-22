@@ -36,6 +36,7 @@ A narrated walkthrough of Gatekeeper's API gateway control plane, traffic analyt
 - 🧪 **[Testing Strategy & Verification](docs/TESTING.md)**: 5-tier testing pyramid, Vitest suites, and chaos benchmarks.
 - 🛡️ **[Security Architecture](docs/SECURITY.md)**: Zero-trust credentials, CSPRNG key generation, and threat mitigations.
 - 💼 **[Portfolio & Interview Package](docs/portfolio/INTERVIEW_QA.md)**: 22 technical interview Q&As and resume bullets.
+- 🌐 **[Cloudflare Pages ₹0 Deployment Guide](docs/deployment/CLOUDFLARE_PAGES.md)**: Zero-cost recruiter demo cloud deployment walkthrough.
 
 ---
 
@@ -270,6 +271,7 @@ Gatekeeper/
 ├── services/                 # Downstream Microservices (Orders & Inventory)
 ├── docs/                     # Architecture, API specs, testing, and portfolio docs
 │   ├── api/                  # Complete REST API Specification
+│   ├── deployment/           # Cloudflare Pages ₹0 deployment and free backend feasibility
 │   ├── portfolio/            # Interview Q&A, Resume Bullets, Project Summary
 │   ├── ARCHITECTURE.md       # Distributed system architecture blueprint
 │   ├── GETTING_STARTED.md    # Dual-workflow quickstart guide
