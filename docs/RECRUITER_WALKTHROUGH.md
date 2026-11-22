@@ -26,6 +26,10 @@ Most portfolio projects are simple CRUD applications or tutorials. **Gatekeeper 
 
 ## 2. Five-Minute Interactive Evaluation Tour
 
+> 📹 **Watch the Video Walkthrough First?**  
+> If you prefer a narrated 4-minute overview before running the tour locally:  
+> [▶ **Watch Gatekeeper Recruiter Demo on YouTube (https://youtu.be/c29oX3FUKVc)**](https://youtu.be/c29oX3FUKVc)
+
 ### Step 1: Launch the Demo (60 Seconds)
 ```bash
 cd frontend

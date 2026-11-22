@@ -31,8 +31,9 @@ Built a 9-dashboard operational cockpit in React 18 & TypeScript with a custom d
 - **100% clean Gitleaks CI scan** with zero leaked credentials
 - Complete end-to-end documentation including REST API specs, architecture blueprints, and a 22-question deep technical interview guide!
 
-💻 **Explore the Codebase & Live Recruiter Demo on GitHub:**
-https://github.com/saipranav22-commits/gatekeeper
+💻 **Explore the Codebase & Live Recruiter Demo:**
+- **GitHub Repository:** https://github.com/saipranav22-commits/gatekeeper
+- **YouTube 4-Minute Video Demo:** https://youtu.be/c29oX3FUKVc
 
 Special thanks to everyone passionate about distributed systems, resilient architectures, and clean engineering craftsmanship. Would love your feedback! 👇
 

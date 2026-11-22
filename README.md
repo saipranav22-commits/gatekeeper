@@ -14,8 +14,21 @@ Gatekeeper is an industrial-grade, multi-tenant API Gateway and Intelligent Traf
 
 ---
 
+## 🎥 Watch Gatekeeper in Action
+
+[![Gatekeeper 4-Minute Project Demo](https://i.ytimg.com/vi/c29oX3FUKVc/hqdefault.jpg)](https://youtu.be/c29oX3FUKVc)
+
+[▶ **Watch the 4-Minute Project Demo**](https://youtu.be/c29oX3FUKVc)
+
+A narrated walkthrough of Gatekeeper's API gateway control plane, traffic analytics, API security, policy evaluation, circuit breakers, interactive health scenarios and system architecture.
+
+*The video demonstrates a standalone frontend simulation. The repository contains the actual Java/Spring Boot backend and associated microservices.*
+
+---
+
 ## ⚡ Quick Navigation
 
+- 🎥 **[4-Minute Video Walkthrough](https://youtu.be/c29oX3FUKVc)**: Narrated demonstration of the control plane, traffic analytics, and fault isolation.
 - 🚀 **[60-Second Recruiter Demo](docs/DEMO_GUIDE.md)**: Explore the entire control plane locally with zero cloud or backend setup.
 - 📋 **[Recruiter & Hiring Manager Evaluation Guide](docs/RECRUITER_WALKTHROUGH.md)**: 5-minute technical evaluation walkthrough.
 - 🏛️ **[System Architecture Blueprint](docs/ARCHITECTURE.md)**: Deep dive into distributed algorithms, Mermaid diagrams, and data flows.

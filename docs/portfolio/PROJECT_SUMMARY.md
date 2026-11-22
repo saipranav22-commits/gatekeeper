@@ -30,6 +30,7 @@ Modern microservice ecosystems require high-performance traffic mediation at the
 ### 3.5 Dual-Mode Frontend Control Plane
 - **Obsidian Titanium Design System**: Fully responsive dark-mode UI with dynamic incident severity hierarchy and universal keyboard shortcuts (`Ctrl + K`).
 - **Zero-Backend Recruiter Demonstration**: Vite-powered standalone mode running entirely in-browser with zero cloud infrastructure, simulating real health states and topology.
+- **Narrated Video Walkthrough**: Complete 4-minute architectural tour with AI voice narration and captions available on [YouTube (https://youtu.be/c29oX3FUKVc)](https://youtu.be/c29oX3FUKVc).
 
 ## 4. Key Performance & Quality Metrics
 - **Frontend Test Coverage**: 147 passing tests across 24 test suites with 0 regressions.

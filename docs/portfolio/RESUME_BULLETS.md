@@ -4,6 +4,20 @@ Tailor your resume with these action-oriented, quantified bullet points categori
 
 ---
 
+## 0. ATS-Optimized Project Entry (Ready to Paste)
+
+**Gatekeeper — Enterprise API Gateway & Control Plane**  
+Java 21 | Spring Boot | React | PostgreSQL | Redis | Resilience4j  
+- **GitHub:** https://github.com/saipranav22-commits/gatekeeper  
+- **Video Demo:** https://youtu.be/c29oX3FUKVc  
+
+### Concise ATS Bullets:
+- Architected an enterprise API gateway in **Java 21, Spring Boot 3, and Redis**, implementing atomic Lua token-bucket rate limiting (sub-2ms p99 latency) and Resilience4j semaphore bulkheads preventing cascading downstream service failures.
+- Engineered an explainable AST policy engine with dry-run simulation and an asynchronous ring-buffer logging dispatcher to PostgreSQL, reducing database write IOPS by 95%.
+- Built an industrial-grade **React 18 / TypeScript** control plane with dark-mode telemetry, automated testing (147 passing tests), and a 4-minute interactive video walkthrough: [Video Demo](https://youtu.be/c29oX3FUKVc) | [GitHub](https://github.com/saipranav22-commits/gatekeeper).
+
+---
+
 ## 1. Senior Backend / Distributed Systems Engineer (Java / Spring Boot / Redis)
 
 - **Architected and implemented Gatekeeper**, an enterprise API Gateway and intelligent traffic control plane in **Java 21 and Spring Boot 3**, supporting multi-tenant rate limiting and fault tolerance.

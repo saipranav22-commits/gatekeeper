@@ -2,6 +2,10 @@
 
 The Gatekeeper Standalone Recruiter Demonstration is an interactive, high-fidelity experience of the entire Gatekeeper control plane designed to run locally with zero cloud, backend, or database dependencies.
 
+> 📹 **Prefer a quick video walkthrough?**  
+> [▶ **Watch the 4-Minute Narrated Project Demo on YouTube (https://youtu.be/c29oX3FUKVc)**](https://youtu.be/c29oX3FUKVc)  
+> *Demonstrates the standalone frontend simulation mode with interactive fault isolation and C4 architecture.*
+
 ---
 
 ## 1. Quick Launch (60 Seconds)
