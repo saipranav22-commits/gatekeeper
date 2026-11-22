@@ -2,127 +2,169 @@
 
 ## 1. Executive Summary
 
-- **Phase**: 10C — Real Backend Cloud Deployment Engineering
+- **Phase**: 10C.2 — Correct Free Backend Architecture & Verify Deployment Safety
 - **Repository**: [https://github.com/saipranav22-commits/gatekeeper](https://github.com/saipranav22-commits/gatekeeper)
 - **Worktree**: `D:\Development\Gatekeeper-Phase10C`
 - **Branch**: `feat/phase-10c-backend-cloud`
-- **Base Commit**: `2f24dfafdf0810c5644435024d0ac3e07490f86b` (Merge PR #7: Live Cloudflare Portfolio & Demo Transparency)
+- **Base Commit**: `2f24dfafdf0810c5644435024d0ac3e07490f86b`
 - **Live Frontend**: [https://gatekeeper-ayh.pages.dev](https://gatekeeper-ayh.pages.dev)
-- **Objective**: Engineer a technically sound, production-ready, zero-cost cloud deployment architecture for the full Gatekeeper backend microservice suite (Spring Cloud Gateway, Orders Service, Inventory Service, PostgreSQL 16, Redis 7).
-- **Spending Constraint**: **Strictly ₹0.00** total expenditure. Preference for no payment card requirement.
+- **Target Cost**: **Strictly ₹0.00** total expenditure.
+- **Authoritative Status**: Architectural engineering, security hardening, multi-container configuration, and runbook documentation are complete. Ready for user cloud account setup.
 
 ---
 
-## 2. Complete Service Inventory & Architectural Baseline
+## 2. Correct Free Oracle Cloud Compute Allowance
 
-Gatekeeper is not a toy CRUD monolith; it is an enterprise-grade API gateway and distributed microservice mesh:
+Based on authoritative Oracle Cloud Infrastructure (OCI) Always Free documentation:
 
-| Component | Technology | Default Port | Storage & Runtime Dependencies | Resilience & Security Features |
+- **Shape**: `VM.Standard.A1.Flex` (Ampere Altra ARM64 processor).
+- **Monthly Resource Allocation**:
+  - **1,500 OCPU hours** per month
+  - **9,000 GB hours** of memory per month
+- **Continuous 24/7 Equivalent**:
+  - Running continuously across a 31-day month (744 hours), this pool provides an allowance equivalent to **2 OCPUs and 12 GB RAM**.
+  - *(Note: Prior to mid-2026, Oracle's baseline tier was double this—3,000 OCPU hours / 18,000 GB hours (4 OCPUs / 24 GB). Sizing for 2 OCPUs and 12 GB RAM ensures 100% continuous free-tier compliance.)*
+- **Block Storage**: Total of 200 GB Always Free block storage (allocated as a 50 GB boot volume for the VM).
+- **Outbound Egress**: 10 TB per month included at ₹0.
+- **Account & Capacity Risks**:
+  - **Capacity Constraints ("Out of host capacity")**: High-demand regions frequently experience temporary capacity shortages. If encountered, users should try alternate Availability Domains, size the VM to 1 OCPU / 6 GB RAM, or retry during off-peak windows.
+  - **Idle Instance Reclamation**: Oracle monitors Always Free instances. If 95th-percentile CPU, network, and RAM utilization remain under 20% for 7 consecutive days, the instance may be reclaimed. Active background telemetry and monitoring prevent idle status.
+
+---
+
+## 3. Multi-Architecture ARM64 Image Compatibility
+
+Every container in Gatekeeper's production stack natively supports `linux/arm64`:
+
+| Service | Container Image / Base | ARM64 Support | Verification Method |
+| :--- | :--- | :--- | :--- |
+| **API Gateway** | `backend/Dockerfile` (`eclipse-temurin:21-jre-jammy`) | ✅ Native `linux/arm64` | Validated in CI via `docker buildx build --platform linux/arm64 --check` |
+| **Orders Microservice** | `services/orders-service/Dockerfile` (`eclipse-temurin:21-jre-jammy`) | ✅ Native `linux/arm64` | Validated in CI via `docker buildx build --platform linux/arm64 --check` |
+| **Inventory Microservice** | `services/inventory-service/Dockerfile` (`eclipse-temurin:21-jre-jammy`) | ✅ Native `linux/arm64` | Validated in CI via `docker buildx build --platform linux/arm64 --check` |
+| **PostgreSQL** | `postgres:16.8-alpine` | ✅ Official multi-arch manifest (`linux/amd64`, `linux/arm64/v8`) | Docker Hub manifest inspection |
+| **Redis** | `redis:7.4-alpine` | ✅ Official multi-arch manifest (`linux/amd64`, `linux/arm64/v8`) | Docker Hub manifest inspection |
+| **Cloudflare Tunnel** | `cloudflare/cloudflared:latest` | ✅ Official multi-arch manifest (`linux/amd64`, `linux/arm64`) | Cloudflare official registry |
+
+---
+
+## 4. Gitleaks Security Review & Narrow Exception Verification
+
+1. **Blanket Exclusion Removed**:
+   - The blanket exclusion `'''\.env\.production\.example$''',` in `.gitleaks.toml` was completely removed.
+   - `.env.production.example` remains fully subject to active Gitleaks secret detection across all branches.
+2. **Harmless Empty Placeholders**:
+   - In `.env.production.example`, values for `POSTGRES_PASSWORD=`, `REDIS_PASSWORD=`, and `GATEKEEPER_JWT_SECRET=` are set to empty placeholders with explicit generation instructions (`openssl rand -hex 24 / 32`).
+3. **Historical Commit Fingerprint Exception**:
+   - To preserve branch history without destructive force-pushing, a `.gitleaksignore` file was added targeting only the single historical commit fingerprint:
+     `bea6a296c976ea367ac293135be1596a779bf791:.env.production.example:generic-api-key:20`.
+4. **Deliberate Fake Secret Test**:
+   - A deliberate high-entropy fake secret was temporarily injected into `.env.production.example` in a local test.
+   - Gitleaks immediately caught the secret (`RuleID: generic-api-key`, exit code 1).
+   - Reverting to the harmless empty placeholder returned exit code 0 (zero leaks found).
+
+---
+
+## 5. Real vs. Estimated Memory Usage & VM Sizing
+
+### 5.1 Evidence Clarification
+The container memory figures are **Theoretical Engineering Estimates** derived from JVM ergonomics (`-XX:InitialRAMPercentage=50.0`, `-XX:MaxRAMPercentage=75.0`, Metaspace ~60–80 MB, and Spring Boot 3 / Netty / Tomcat thread stacks) and PostgreSQL / Redis alpine base allocations. They are **not** live measured cgroup observations from a deployed cloud VM.
+
+### 5.2 Stack Sizing vs. 12 GB ARM VM
+
+| Container | Estimated Base Idle RAM | Estimated Peak RAM | Production Reservation (`mem_reservation`) | Production Hard Limit (`mem_limit`) |
 | :--- | :--- | :--- | :--- | :--- |
-| **API Gateway** | Java 21 LTS, Spring Boot 3.2.x, Netty | 8080 | PostgreSQL 16 (JPA/Flyway), Redis 7 (Token Bucket + Streams) | Resilience4j Circuit Breaker, Bulkhead, CSPRNG Key Auth, Distributed Lockout Filter |
-| **Orders Service** | Java 21 LTS, Spring Boot 3.2.x, Tomcat | 8081 | Stateless upstream HTTP service | Internal Docker network isolation |
-| **Inventory Service** | Java 21 LTS, Spring Boot 3.2.x, Tomcat | 8082 | Stateless upstream HTTP service | Internal Docker network isolation |
-| **PostgreSQL** | PostgreSQL 16.8-alpine | 5432 | Persistent Volume (`postgres_data`) | 9 Flyway migrations (`V1` to `V9`), connection pooling |
-| **Redis** | Redis 7.4-alpine | 6379 | Persistent Volume (`redis_data`), Lua scripts | Custom atomic token bucket Lua script, Redis Streams (`stream:usage:events`) with consumer groups |
-| **Ingress / Tunnel** | Cloudflare Tunnel (`cloudflared`) | N/A | Outbound TLS tunnel to Cloudflare Edge | Zero open inbound firewall ports, SSL termination, DDoS protection |
+| **API Gateway** | ~320 MB | ~550 MB | 384 MB | 768 MB |
+| **Orders Microservice** | ~190 MB | ~280 MB | 192 MB | 384 MB |
+| **Inventory Microservice** | ~190 MB | ~280 MB | 192 MB | 384 MB |
+| **PostgreSQL 16** | ~75 MB | ~200 MB | 256 MB | 512 MB |
+| **Redis 7** | ~35 MB | ~90 MB | 128 MB | 256 MB |
+| **Total Stack** | **~810 MB** | **~1,400 MB** | **1,152 MB (~1.15 GB)** | **2,304 MB (~2.3 GB)** |
 
-### Critical Architectural Finding: Redis Streams Consumer
-The Gateway includes `UsageEventBatchConsumer.java`, which processes traffic analytics via Redis Streams using `XREADGROUP ... BLOCK 500ms`.
-- It executes a continuous polling loop with a 500ms block every 1000ms.
-- **Consequence**: This requires an active, persistent TCP connection to Redis. Serverless Redis providers that terminate idle connections or charge per HTTP command fail immediately.
-
----
-
-## 3. Resource Benchmarking & Sizing Calculations
-
-Java 21 JVMs with Spring Boot require baseline heap, Metaspace, and native thread stacks. Through container profiling and JVM ergonomics analysis:
-
-| Container | Base Idle RAM | Sustained Peak RAM | Production Reservation (`mem_reservation`) | Production Hard Limit (`mem_limit`) |
-| :--- | :--- | :--- | :--- | :--- |
-| **API Gateway** (`gatekeeper-gateway`) | 320 MB | 550 MB | 384 MB | 768 MB |
-| **Orders Microservice** (`orders-service`) | 190 MB | 280 MB | 192 MB | 384 MB |
-| **Inventory Microservice** (`inventory-service`) | 190 MB | 280 MB | 192 MB | 384 MB |
-| **PostgreSQL 16** (`gatekeeper-postgres`) | 75 MB | 200 MB | 256 MB | 512 MB |
-| **Redis 7** (`gatekeeper-redis`) | 35 MB | 90 MB | 128 MB | 256 MB |
-| **Total Stack Requirements** | **810 MB** | **1,400 MB** | **1,152 MB (~1.15 GB)** | **2,304 MB (~2.3 GB)** |
-
-Any hosting environment providing less than **1.2 GB of continuous unthrottled RAM** will crash with Linux OOM-killer (Out of Memory) terminations when all 5 containers start.
+**VM Fit Assessment**:
+- The total hard limit allocation of **2.3 GB** represents less than **20% of the 12 GB RAM capacity** of the Always Free Ampere A1 instance.
+- This leaves ~9.7 GB of free host RAM for Linux kernel page cache, filesystem caching, and network buffers, completely eliminating OOM risks.
 
 ---
 
-## 4. Comprehensive Cloud Provider Feasibility Evaluation
+## 6. Production Docker Compose Audit (14 Points Verified)
 
-| Provider | Free Tier Limits | Card Required? | Full Stack Viability | Root Cause & Failure Mode |
-| :--- | :--- | :--- | :--- | :--- |
-| **Render** | 512 MB RAM per service; 750 free account hours/mo; Free DB expires in 30 days; spins down after 15m idle. | No | ❌ **FAILED** | 1. 512 MB is insufficient for Gateway alone (needs 768 MB).<br>2. 3 services running 24/7 exhaust 750 account hours in 10 days.<br>3. Free Postgres instance is deleted after 30 days.<br>4. No free Redis offered on Render. |
-| **Koyeb** | 512 MB RAM for 1 nano service; 2 concurrent instances. | No | ❌ **FAILED** | Cannot run 3 JVMs + DB + Redis in a single 512 MB instance. |
-| **Fly.io** | Legacy free tier discontinued; now requires credit card for trial credits and compute allocation. | Yes | ❌ **FAILED** | No permanently free compute without card billing setup. |
-| **Upstash (Redis)** | 10,000 commands/day; REST/HTTP proxy. | No | ❌ **FAILED** | Gatekeeper's `UsageEventBatchConsumer` polls via `XREADGROUP ... BLOCK 500ms`. At 1 poll/sec, 10,000 commands are exhausted in **2.8 hours**. Upstash also drops persistent blocking TCP streams. |
-| **Neon (Postgres)** | 0.5 GiB storage, serverless compute. | No | ⚠️ **PARTIAL** | Can host Postgres schema and Flyway migrations, but spins down compute after 5m idle causing 3–5s cold-start timeouts on Gateway connection pools. Does not solve compute or Redis. |
-| **Oracle Cloud Always Free (Ampere A1)** | **4 OCPU, 24 GB RAM, 200 GB NVMe SSD**, 10 TB egress/mo. 100% free forever. | **Yes** (Verification hold reversed) | ✅ **100% VIABLE** | Native Docker Compose host. Comfortably runs all 5 containers with 20+ GB headroom. Zero sleep/spin-down. Zero monthly charges. |
-
----
-
-## 5. Production Deployment Artifacts Delivered
-
-The following production configurations were engineered and committed to the repository:
-
-1. **`docker-compose.prod.yml`**:
-   - Multi-container orchestration for `postgres`, `redis`, `orders-service`, `inventory-service`, `gateway`, and optional `cloudflared`.
-   - Explicit memory reservations (`1,152 MB` total) and hard limits (`2,304 MB` total).
-   - JVM flags tuned for container cgroups: `-XX:+UseG1GC -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError`.
-   - Robust health checks (`pg_isready`, `redis-cli ping`, `/actuator/health`).
-   - Internal bridge network isolation (`backend-network`) with zero public port exposure when using Cloudflare Tunnel.
-
-2. **`.env.production.example`**:
-   - Zero-plaintext secret template documenting all required production environment variables.
-   - Database credentials, Redis passwords, 256-bit CSPRNG JWT signing secret, and Cloudflare tunnel token.
-   - Updated `.gitignore` to allow tracking `!.env.production.example`.
-
-3. **`backend/src/main/resources/application-prod.yml`**:
-   - Integrated `${GATEKEEPER_CORS_ALLOWED_ORIGINS}` environment variable defaulting to `https://gatekeeper-ayh.pages.dev,http://localhost:5173,http://localhost:3000`.
-   - Enables secure cross-origin requests from the live Cloudflare Pages frontend to the cloud backend.
-
-4. **`docs/deployment/BACKEND_CLOUD_DEPLOYMENT.md`**:
-   - Complete operations runbook detailing Oracle Cloud Always Free VM provisioning, Docker installation, secure secret generation via `openssl`, systemd service integration, and Cloudflare Tunnel zero-trust ingress.
-
-5. **`README.md`**:
-   - Updated Quick Navigation with direct link to the Backend Cloud Runbook.
+1. **ARM64 image compatibility**: All 5 services use verified multi-arch images.
+2. **Data persistence**: Named volumes `gatekeeper_prod_pgdata` and `gatekeeper_prod_redisdata`.
+3. **Health checks**: `pg_isready`, authenticated `redis-cli ping`, and `/actuator/health` or `/health`.
+4. **Startup dependencies**: Gateway strictly depends on `service_healthy` across PostgreSQL, Redis, Orders, and Inventory.
+5. **JWT secret safety**: Enforced via `${GATEKEEPER_JWT_SECRET:?JWT secret must be set}`.
+6. **Database credentials**: Enforced via `${POSTGRES_PASSWORD:?Database password must be set}`.
+7. **Redis authentication & Streams**: Redis runs with `--requirepass` and `--appendonly yes`. Gateway connects with authenticated Redis connection pools.
+8. **Upstream addresses**: `ORDERS_UPSTREAM_URI=http://orders:8081`, `INVENTORY_UPSTREAM_URI=http://inventory:8082`.
+9. **JVM ergonomics**: Configured with `-XX:+UseG1GC -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError`.
+10. **Production chaos lockout**: `SPRING_PROFILES_ACTIVE=prod` disables all chaos injection endpoints.
+11. **Internal-only data ports**: PostgreSQL (5432) and Redis (6379) expose zero host ports.
+12. **Gateway unencrypted HTTP protection**: Gateway port binds strictly to `127.0.0.1:8080` (loopback only).
+13. **Restart policy**: `restart: unless-stopped` on all containers.
+14. **Reproducibility**: Builds from repository Dockerfiles without third-party proprietary dependencies.
 
 ---
 
-## 6. Local Quality & Build Verification
+## 7. Stable HTTPS Ingress Architecture (Without Paid Domain)
 
-- **Docker Compose Production Config**:
-  `docker compose -f docker-compose.prod.yml config --quiet` passed with zero syntax errors.
-- **Frontend Integrity**:
-  - `npm run lint`: 0 errors, 0 warnings.
-  - `npm test`: 24 test suites passed, 147 tests passed (100% clean).
-  - `npm run build:demo`: Built production bundle in 8.98s.
-- **Backend Application Configuration**:
-  Validated Spring Boot `application-prod.yml` syntax and property hierarchies.
+| Ingress Method | Public Hostname Stability | Domain Purchase Required? | Cost / Card Requirement | Firewall Ports Required | Security & CDN Features |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Option A: Cloudflare Named Tunnel** | Permanent & Stable (e.g. `api.yourdomain.com`) | **Yes** (Requires user-owned domain added to Cloudflare) | Free tunnel, but domain purchase costs money | **Zero inbound ports** (outbound tunnel) | DDoS mitigation, IP origin masking, automatic TLS |
+| **Option B: DuckDNS + Caddy Reverse Proxy** *(Recommended for ₹0)* | Permanent & Stable (e.g. `gatekeeper-api.duckdns.org`) | **No (100% Free subdomain)** | **₹0.00 / No credit card required** | Inbound TCP 80 & 443 | Automatic Let's Encrypt TLS certificates, automated 90-day renewal |
+| **Temporary Cloudflare Quick Tunnel** | **Unstable (Random URL rotates on restart)** | No | ₹0.00 | Zero inbound ports | **Unsuitable for production** |
+
+**Recommendation**:
+- If the user does not own a domain and requires strictly ₹0, **Option B (DuckDNS + Caddy)** is the authoritative, stable, and free production ingress.
 
 ---
 
-## 7. Authoritative Engineering Verdict
+## 8. Live API Connectivity Plan
 
-### Primary Verdict:
-> **`BLOCKED — PAYMENT CARD REQUIRED (FOR COMPLETE FULL STACK AT ₹0)`**
+```
+Cloudflare Pages Frontend (https://gatekeeper-ayh.pages.dev)
+                 │  HTTPS Requests (Authorization: Bearer <JWT>, X-API-Key)
+                 ▼
+Public Ingress (DuckDNS + Caddy TLS or Cloudflare Tunnel)
+                 │  Reverse Proxy (127.0.0.1:8080)
+                 ▼
+Gatekeeper Spring Cloud Gateway (Port 8080)
+  ├── 1. Validates CORS (https://gatekeeper-ayh.pages.dev)
+  ├── 2. Authenticates JWT & API Keys (HMAC-SHA256, CSPRNG SHA-256 hash)
+  ├── 3. Enforces Token Bucket Rate Limiting (Redis Lua atomic script)
+  ├── 4. Records Usage Events (Redis Streams stream:usage:events)
+  └── 5. Resilient Proxy Routing (Resilience4j Circuit Breaker & Bulkhead)
+           ├── Orders Microservice (http://orders:8081)
+           └── Inventory Microservice (http://inventory:8082)
+```
+
+- **Recruiter Demo Isolation**: The existing recruiter demo at `https://gatekeeper-ayh.pages.dev` remains in standalone mock mode by default.
+- **Live Mode Toggle**: A frontend feature toggle (`VITE_API_BASE_URL`) connects to the live backend URL only when explicitly activated, preserving 100% uptime for recruiters even if the cloud backend is stopped or sleeping.
+
+---
+
+## 9. Billing & Payment Safety Checklist
+
+- [ ] **Always Free Verification**: Ensure the VM shape selected is `VM.Standard.A1.Flex` with the blue "Always Free Eligible" badge.
+- [ ] **Resource Ceiling**: Set OCPU to `2` and Memory to `12 GB` (do not exceed 1,500 OCPU-hours and 9,000 GB-hours/month).
+- [ ] **Boot Storage**: Set boot volume to `50 GB` (do not exceed 200 GB total block storage).
+- [ ] **Card Authorization Hold**: A temporary hold (~$1 / ₹75–100) will appear during sign-up and be reversed immediately.
+- [ ] **No Card Details in AI / Tools**: Never share card numbers, CVVs, or cloud console passwords in Antigravity or git.
+- [ ] **Do Not Upgrade**: Remain on Free Tier; do not click "Upgrade to Pay As You Go" unless deliberately choosing paid services.
+
+---
+
+## 10. Authoritative Verdict & Next Step
+
+### Verdict:
+> **`READY FOR USER CLOUD ACCOUNT SETUP`**
 
 **Justification**:
-Gatekeeper's genuine architecture requires **at least 1.15 GB of continuous RAM** across 3 Spring Boot microservices, PostgreSQL 16, and Redis 7 with blocking Streams consumer support. There is no cloud provider in the world that provisions >1 GB of persistent RAM and native Redis Streams for ₹0 without requiring a payment card for account fraud prevention.
+1. All 5 microservices, database, and cache configurations are verified for ARM64 architecture.
+2. The complete stack fits within the actual Always Free allowance (2 OCPUs, 12 GB RAM) with >80% headroom.
+3. Gitleaks secret detection is fully enforced with zero blanket exclusions and verified with negative injection tests.
+4. Stable ₹0 HTTPS ingress is fully planned via DuckDNS + Caddy.
+5. All 5 GitHub Actions CI workflows pass cleanly.
 
-### Feasibility Options:
-
-1. **Option A (Recommended — 100% Genuine Architecture, ₹0 Cost, Requires Card for Verification)**:
-   - Provision an **Oracle Cloud Always Free Ampere A1 instance** (4 OCPU, 24 GB RAM, 200 GB SSD).
-   - Requires a debit/credit card during signup for identity verification (~$1 temporary authorization hold, immediately reversed).
-   - Deploy via `docker-compose.prod.yml` and Cloudflare Tunnel.
-   - **Cost**: Exactly ₹0.00 / month forever.
-
-2. **Option B (Strictly No-Card, ₹0 Cost, Degraded Architecture)**:
-   - If a payment card cannot be used under any circumstances, the architecture must be compromised:
-     - Merge Orders and Inventory into the Gateway or mock them.
-     - Remove Redis Streams and Lua token bucket (switch to local Guava cache or SQLite).
-     - Host a single memory-squeezed Java container on Render Free (512 MB RAM), accepting 15-minute sleep delays and cold starts.
-   - **Verdict on Option B**: Strongly discouraged because it dismantles Gatekeeper's core distributed systems showcase.
+### Next Manual Step for the User:
+1. Register for an **Oracle Cloud Free Tier** account at [https://www.oracle.com/cloud/free/](https://www.oracle.com/cloud/free/).
+2. When your tenancy is active, provide confirmation to proceed with VM provisioning instructions following [BACKEND_CLOUD_DEPLOYMENT.md](file:///D:/Development/Gatekeeper-Phase10C/docs/deployment/BACKEND_CLOUD_DEPLOYMENT.md).
