@@ -32,7 +32,7 @@ In reality, `dist/index.html` explicitly preloads and imports these dependencies
 | :--- | :--- | :--- | :--- |
 | `index.html` | 0.68 kB | **0.35 kB** | Single-page application HTML entrypoint |
 | `index-BMmD1e0L.css` | 28.35 kB | **6.29 kB** | Full Obsidian Titanium styling and utility classes |
-| `index-D0kMVY3f.js` | 306.60 kB | **94.90 kB** | React 18, React DOM, React Router 6, TanStack Query |
+| `index-D0kMVY3f.js` | 306.60 kB | **94.90 kB** | React 19, React DOM, React Router 6, TanStack Query |
 | `apiClient-Dqg8KsyO.js` | 57.52 kB | **21.24 kB** | Axios HTTP client, interceptors, error normalizers |
 | `utils-j3PgvVVi.js` | 38.51 kB | **12.84 kB** | Formatting utilities, date helpers, cn class merge |
 | `Login-mY7UOfKH.js` | 4.65 kB | **1.82 kB** | Login form component and validation logic |

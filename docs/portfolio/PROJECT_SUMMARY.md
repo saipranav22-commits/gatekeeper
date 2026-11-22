@@ -4,21 +4,21 @@
 Modern microservice ecosystems require high-performance traffic mediation at the edge. Without a resilient gateway layer, downstream services face cascading failure from latency spikes, unthrottled traffic surges from rogue tenants, inconsistent API key management, and opaque traffic governance policies.
 
 ## 2. Solution Overview
-**Gatekeeper** is an enterprise-grade API Gateway and Intelligent Traffic Control Plane engineered from scratch using **Java 21 (Spring Boot 3)** and **TypeScript (React 18)**. It acts as an intelligent proxy between public ingress traffic and downstream internal microservices, enforcing multi-tenant rate limits, resilience patterns, and policy rules with sub-millisecond overhead.
+**Gatekeeper** is an enterprise-grade API Gateway and Intelligent Traffic Control Plane engineered from scratch using **Java 21 (Spring Boot 3)** and **TypeScript (React 19)**. It acts as an intelligent proxy between public ingress traffic and downstream internal microservices, enforcing multi-tenant rate limits, resilience patterns, and policy rules.
 
 ## 3. Core Architectural Pillars
 
 ### 3.1 Distributed Token-Bucket Rate Limiter (Redis Lua)
 - **Zero Race Conditions**: Executes an atomic Redis Lua script calculating token replenishment based on fractional timestamps.
 - **Multi-Tenant Isolation**: Supports dynamic quotas per subscription plan tier (`Starter`, `Professional`, `Enterprise`) with automatic burst handling.
-- **Sub-Millisecond Overhead**: Eliminates distributed locking overhead, achieving p99 evaluation latency under 2ms.
+- **Atomic In-Memory Evaluation**: Eliminates distributed locking overhead, evaluating token availability atomically within Redis memory.
 
-### 3.2 Cascading Failure Prevention (Resilience4j)
-- **Sliding-Window Circuit Breakers**: Automatically transitions between `CLOSED`, `OPEN`, and `HALF-OPEN` states when upstream error rates cross configured thresholds (default: 50% over 100 calls).
-- **Semaphore Bulkheads**: Dedicates isolated concurrency pools to each downstream microservice, guaranteeing that an outage in one service never starves thread pools for healthy services.
+### 3.2 Cascading Failure Prevention & Fault Isolation
+- **Sliding-Window Circuit Breakers**: Automatically transitions between `CLOSED`, `OPEN`, and `HALF-OPEN` states when upstream error rates cross configured thresholds (default: 50% over sliding window).
+- **Semaphore Bulkheads**: Dedicates isolated concurrency pools (configurable, default: 10 permits per route) to each downstream microservice, guaranteeing that an outage in one service never starves thread pools for healthy services.
 
 ### 3.3 Explainable Policy Governance Engine
-- **Dynamic AST Evaluation**: Compiles policy expressions into an Abstract Syntax Tree to evaluate headers, client IP, geographic regions, and payload metadata.
+- **Declarative Rule Evaluation**: Evaluates structured rule criteria against request attributes (route ID, HTTP method, tenant plan, OAuth scopes, time windows, and days of week).
 - **Dry-Run Simulation**: Enables operators to test candidate policies against simulated payloads, returning full explainable decision traces before production activation.
 - **Immutable Versioning**: All policy revisions are version-controlled with instant rollback capability.
 
@@ -33,6 +33,6 @@ Modern microservice ecosystems require high-performance traffic mediation at the
 - **Narrated Video Walkthrough**: Complete 4-minute architectural tour with AI voice narration and captions available on [YouTube (https://youtu.be/c29oX3FUKVc)](https://youtu.be/c29oX3FUKVc).
 
 ## 4. Key Performance & Quality Metrics
-- **Frontend Test Coverage**: 147 passing tests across 24 test suites with 0 regressions.
+- **Automated Test Coverage**: 457 passing tests (147 Vitest frontend tests across 24 suites, 310 backend JUnit tests across 48 test classes) verified in GitHub Actions CI.
 - **Security Posture**: 100% Gitleaks clean, zero plaintext secrets in Git, zero console errors across 5 responsive viewports.
 - **Architecture Integrity**: Clean separation of concerns between edge proxy, state cache, relational persistence, and presentation layers.

@@ -6,7 +6,7 @@ This document details the architectural design, distributed algorithms, data flo
 
 ## 1. Executive Architecture Overview
 
-Gatekeeper is an enterprise API Gateway and Intelligent Traffic Management Plane engineered in Java 21 (Spring Boot 3) and TypeScript (React 18). It delivers distributed rate limiting, tenant quota enforcement, circuit breaking, policy-based traffic governance, and sub-millisecond telemetry.
+Gatekeeper is an enterprise API Gateway and Intelligent Traffic Management Plane engineered in Java 21 (Spring Boot 3) and TypeScript (React 19). It delivers distributed rate limiting, tenant quota enforcement, circuit breaking, policy-based traffic governance, and sub-millisecond telemetry.
 
 ```mermaid
 flowchart TD
@@ -156,9 +156,9 @@ stateDiagram-v2
 - **Manual Override**: Administrators can manually reset any circuit breaker via `/api/v1/resilience/routes/{routeId}/reset`.
 
 ### 4.2 Semaphore Bulkhead Isolation
-Each upstream route (e.g., Orders Service vs. Inventory Service) is assigned an independent **Semaphore Bulkhead** (default: 50 concurrent executions). If an outage or latency spike occurs in Orders Service:
-- Orders Service exhausts its 50 permits and fails fast with `429/503`.
-- **Inventory Service remains 100% unaffected** with its own 50 permits available.
+Each upstream route (e.g., Orders Service vs. Inventory Service) is assigned an independent **Semaphore Bulkhead** (configurable, default: 10 concurrent executions). If an outage or latency spike occurs in Orders Service:
+- Orders Service exhausts its permits and fails fast with `429/503`.
+- **Inventory Service remains 100% unaffected** with its own permits available.
 - Thread resources in the Gatekeeper gateway are never starved.
 
 ---
@@ -169,10 +169,10 @@ Gatekeeper includes an extensible policy evaluation engine designed to govern AP
 
 ```mermaid
 flowchart LR
-    RuleStore[("Versioned Rule Store\nPostgreSQL")] --> ASTBuilder["Abstract Syntax Tree\n(AST Compiler)"]
+    RuleStore[("Versioned Rule Store\nPostgreSQL")] --> ASTBuilder["Rule Evaluation Engine\n(Declarative Matcher)"]
     ASTBuilder --> ShadowMode["Shadow Evaluation\n(Evaluates without blocking)"]
     ASTBuilder --> LiveEngine["Live Enforcement Engine\n(Priority-Ordered Rules)"]
-    LiveEngine --> DecisionTrace["Explainable Decision Trace\n(Rule ID, Expression, Result)"]
+    LiveEngine --> DecisionTrace["Explainable Decision Trace\n(Rule ID, Match Details, Result)"]
     DecisionTrace --> AuditLog[("Immutable Audit Trail\nPostgreSQL")]
 ```
 
@@ -197,8 +197,8 @@ flowchart LR
 ```
 
 - **Zero Critical-Path Latency**: Proxy response is dispatched to the client immediately after upstream response completes; logging is fully asynchronous.
-- **Micro-Batching**: Database writes are batched in groups of up to 1,000 events or 500ms windows, reducing database IOPS by over 95%.
-- **Dead-Letter Safety**: Any unwriteable events are preserved in a local dead-letter buffer for automated recovery.
+- **Micro-Batching**: Database writes are batched in groups of up to 1,000 events or 500ms windows, eliminating per-request relational write overhead on the critical proxy path.
+- **Dead-Letter Safety**: Any unwriteable events are preserved in a dead-letter queue (DLQ) for automated recovery.
 
 ---
 
@@ -208,7 +208,7 @@ Gatekeeper features a standalone, interactive recruiter demonstration mode embed
 
 ```mermaid
 flowchart TD
-    subgraph UI["React 18 Control Plane"]
+    subgraph UI["React 19 Control Plane"]
         Pages["Overview, Analytics, Consumers, Plans, Keys, Policy, Reliability, Chaos"]
         HealthContext["GatewayHealthContext\n(HEALTHY | DEGRADED | UNHEALTHY | RECOVERING)"]
     end
