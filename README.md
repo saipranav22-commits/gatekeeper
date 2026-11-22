@@ -14,6 +14,21 @@ Gatekeeper is an industrial-grade, multi-tenant API Gateway and Intelligent Traf
 
 ---
 
+## 🌐 Try Gatekeeper Live
+
+[![Cloudflare Pages](https://img.shields.io/badge/Deployment-Cloudflare%20Pages-F38020?logo=cloudflare&logoColor=white)](https://gatekeeper-ayh.pages.dev)
+[![Demo Mode](https://img.shields.io/badge/Demo-Interactive%20Control%20Plane-10B981)](https://gatekeeper-ayh.pages.dev)
+[![Cost](https://img.shields.io/badge/Cost-%E2%82%B90%20(Free%20Tier)-blue)](https://gatekeeper-ayh.pages.dev)
+
+Experience the Gatekeeper control plane directly in your browser — zero installation, zero cloud infrastructure, and zero backend configuration:
+
+👉 **[Launch Interactive Control Plane (https://gatekeeper-ayh.pages.dev)](https://gatekeeper-ayh.pages.dev)**  
+👉 **[Direct Administrator Login](https://gatekeeper-ayh.pages.dev/login)** *(pre-filled demo credentials: click "Sign In as Administrator")*
+
+> ℹ️ **Demo Transparency Note**: The public interactive deployment runs in standalone simulation mode on Cloudflare Pages Free, executing real React 19 UI state machines, interactive circuit breaker toggles, and Policy Studio dry-run evaluation entirely client-side. The underlying Java 21 / Spring Boot 3 edge gateway, PostgreSQL 16 schema, Redis 7 token-bucket Lua scripts, and mock microservices are fully implemented in this repository and verified via 450+ automated CI tests.
+
+---
+
 ## 🎥 Watch Gatekeeper in Action
 
 [![Gatekeeper 4-Minute Project Demo](https://i.ytimg.com/vi/c29oX3FUKVc/hqdefault.jpg)](https://youtu.be/c29oX3FUKVc)
@@ -28,8 +43,9 @@ A narrated walkthrough of Gatekeeper's API gateway control plane, traffic analyt
 
 ## ⚡ Quick Navigation
 
+- 🌐 **[Live Interactive Demo](https://gatekeeper-ayh.pages.dev)**: Instant browser-based recruiter walkthrough on Cloudflare Pages.
 - 🎥 **[4-Minute Video Walkthrough](https://youtu.be/c29oX3FUKVc)**: Narrated demonstration of the control plane, traffic analytics, and fault isolation.
-- 🚀 **[60-Second Recruiter Demo](docs/DEMO_GUIDE.md)**: Explore the entire control plane locally with zero cloud or backend setup.
+- 🚀 **[60-Second Recruiter Demo Guide](docs/DEMO_GUIDE.md)**: Explore the entire control plane locally or via live deployment.
 - 📋 **[Recruiter & Hiring Manager Evaluation Guide](docs/RECRUITER_WALKTHROUGH.md)**: 5-minute technical evaluation walkthrough.
 - 🏛️ **[System Architecture Blueprint](docs/ARCHITECTURE.md)**: Deep dive into distributed algorithms, Mermaid diagrams, and data flows.
 - 📡 **[REST API Specification](docs/api/README.md)**: Authoritative documentation of all gateway and microservice endpoints.
